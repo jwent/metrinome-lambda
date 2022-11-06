@@ -7,19 +7,17 @@ var builder = WebApplication.CreateBuilder(args);
 //    .AddQueryType<Query>();
 
 builder.Services
-  .AddAWSLambdaHosting(LambdaEventSource.HttpApi);
-builder.Services.AddGraphQL(b => b
-	.AddAutoSchema<Query>()  // schema
-	.AddSystemTextJson())    // serializer
-	.AddCors(options =>
-			{
-				options.AddPolicy("DefaultPolicy", builder =>
-				{
-					builder.AllowAnyHeader()
-							.WithMethods("GET", "POST")
-							.WithOrigins("*");
-				});
+	.AddAWSLambdaHosting(LambdaEventSource.HttpApi)
+	.AddCors(options => {
+			options.AddPolicy("DefaultPolicy", builder => {
+				builder.AllowAnyHeader()
+						.WithMethods("GET", "POST")
+						.WithOrigins("*");
 			});
+		});
+builder.Services.AddGraphQL(b => b
+	.AddAutoSchema<Query>(s => s.WithMutation<Mutation>())  // schema
+	.AddSystemTextJson());    // serializer
 
 var app = builder.Build();
 
