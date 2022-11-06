@@ -1,7 +1,10 @@
 ﻿using GraphQL;
 using GraphQL.Validation;
 // using GraphQL.Authorization;
-using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+using System.Security.Claims;
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,15 +21,36 @@ builder.Services
 						.WithOrigins("*");
 			});
 		});
+// builder.Services
+// 		.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
+// 			Console.WriteLine("cookie auth?");
+// 			o.Cookie.Name = "graphql-auth";
+// 		});
+
 builder.Services
-		.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
-			Console.WriteLine("cookie auth?");
-			o.Cookie.Name = "graphql-auth";
-		});
+	.AddAuthentication(options => {
+		options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+		options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+		options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+	})
+	.AddJwtBearer(options => {
+		options.TokenValidationParameters = new TokenValidationParameters {
+			ValidateAudience = true,
+			ValidateIssuer = true,
+			ValidateIssuerSigningKey = true,
+			ValidAudience = "audience",
+			ValidIssuer = "issuer",
+			RequireSignedTokens = false,
+			IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("secretsecretsecret"))
+		};
+
+		options.RequireHttpsMetadata = false;
+		options.SaveToken = true;
+	});
 builder.Services
 	.AddAuthorization(policyBuilder => {
 		Console.WriteLine("policy builder?");
-		policyBuilder.AddPolicy("AdminPolicy", p => p.RequireClaim("role", "Admin"));
+		policyBuilder.AddPolicy("AdminPolicy", p => p.RequireClaim(ClaimTypes.Role, "Admin"));
 	});
 // builder.Services
 // 	.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
