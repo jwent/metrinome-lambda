@@ -1,4 +1,7 @@
 ﻿using GraphQL;
+using GraphQL.Validation;
+// using GraphQL.Authorization;
+using Microsoft.AspNetCore.Authentication.Cookies;
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,9 +18,27 @@ builder.Services
 						.WithOrigins("*");
 			});
 		});
+builder.Services
+		.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
+			Console.WriteLine("cookie auth?");
+			o.Cookie.Name = "graphql-auth";
+		});
+builder.Services
+	.AddAuthorization(policyBuilder => {
+		Console.WriteLine("policy builder?");
+		policyBuilder.AddPolicy("AdminPolicy", p => p.RequireClaim("role", "Admin"));
+	});
+// builder.Services
+// 	.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+// builder.Services
+// 	.AddSingleton<IAuthorizationEvaluator, AuthorizationEvaluator>()
+// 	.AddTransient<IValidationRule, AuthorizationValidationRule>()
+// 	;
+		
 builder.Services.AddGraphQL(b => b
-	.AddAutoSchema<Query>(s => s.WithMutation<Mutation>())  // schema
-	.AddSystemTextJson());    // serializer
+	.AddAutoSchema<Query>(s => s.WithMutation<Mutation>())
+	.AddSystemTextJson()
+	.AddAuthorizationRule());
 
 var app = builder.Build();
 
@@ -29,7 +50,16 @@ app.UseGraphQLPlayground(
 		SubscriptionsEndPoint = "/graphql",
 	});
 
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseCors("DefaultPolicy");
+// app.UseGraphQL("/graphql", config => {
+//     // // require that the user be authenticated
+//     config.AuthorizationRequired = false;
+
+//     // require that the user be a member of at least one role listed
+//     config.AuthorizedRoles.Add("Admin");
+// });
 app.UseEndpoints(endpoints =>
   endpoints.MapGraphQL());
 

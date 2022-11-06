@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using GraphQL;
+using GraphQL.Authorization;
+
 
 public class OnTrackDBContext : DbContext {
 	private static OnTrackDBContext? _ctx = null;
