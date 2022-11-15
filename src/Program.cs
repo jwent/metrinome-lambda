@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Security.Claims;
+
+
+
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
@@ -49,7 +52,6 @@ builder.Services
 	});
 builder.Services
 	.AddAuthorization(policyBuilder => {
-		Console.WriteLine("policy builder?");
 		policyBuilder.AddPolicy("AdminPolicy", p => p.RequireClaim(ClaimTypes.Role, "Admin"));
 	});
 // builder.Services
@@ -58,11 +60,23 @@ builder.Services
 // 	.AddSingleton<IAuthorizationEvaluator, AuthorizationEvaluator>()
 // 	.AddTransient<IValidationRule, AuthorizationValidationRule>()
 // 	;
-		
-builder.Services.AddGraphQL(b => b
-	.AddAutoSchema<Query>(s => s.WithMutation<Mutation>())
-	.AddSystemTextJson()
-	.AddAuthorizationRule());
+
+
+
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+AppContext.SetSwitch("Npgsql.DisableDateTimeInfinityConversions", true);
+
+// builder.Services.AddErrorInfoProvider(opt => opt.ExposeExceptionStackTrace = true);
+
+builder.Services
+	.AddGraphQL(b => b
+		.AddAutoSchema<Query>(s => s.WithMutation<Mutation>())
+		.AddSystemTextJson()
+		.AddAuthorizationRule()
+		.AddUserContextBuilder(httpContext => new MyGraphQLUserContext(httpContext.User))
+    .AddErrorInfoProvider((opts, serviceProvider) => {
+        opts.ExposeExceptionStackTrace = true;
+    }));
 
 var app = builder.Build();
 
