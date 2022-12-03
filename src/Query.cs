@@ -19,14 +19,15 @@ public class Query {
 
 	[Authorize(Policy = "AdminPolicy")]
 	public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId) {
-		Guid id;
+		Guid userId;
 		if (context.User.Identity is ClaimsIdentity identity)
-			id = Guid.Parse(identity.FindFirst("id").Value);
+			userId = Guid.Parse(identity.FindFirst("id").Value);
 		else
 			throw new Exception("id claim missing");
 
 		var campaignGuid = Guid.Parse(campaignId);
-		var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.FirstOrDefault(e => e.Id == campaignGuid && e.OwnerId == id, null);
+		Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
+		var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.FirstOrDefault(e => e.Id == campaignGuid && e.Owner.Id == userId, null);
 		if (existingCampaign == null)
 			throw new Exception("campaign not found!");
 
@@ -36,12 +37,12 @@ public class Query {
 	[Authorize(Policy = "AdminPolicy")]
 	public static List<TrackingCampaign> myCampaigns(IResolveFieldContext context) {
 		Console.WriteLine("myCampaigns started!");
-		Guid id;
+		Guid userId;
 		if (context.User.Identity is ClaimsIdentity identity)
-			id = Guid.Parse(identity.FindFirst("id").Value);
+			userId = Guid.Parse(identity.FindFirst("id").Value);
 		else
 			throw new Exception("id claim missing");
 
-		return OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.OwnerId == id).ToList();
+		return OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.Owner.Id == userId).ToList();
 	}
 }

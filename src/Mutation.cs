@@ -4,7 +4,6 @@ using System.Security.Claims;
 using System.Text;
 using GraphQL;
 using GraphQL.Authorization;
-using System.Security.Claims;
 
 
 public class Mutation {
@@ -46,15 +45,18 @@ public class Mutation {
 
 	[Authorize(Policy = "AdminPolicy")]
 	public static Guid? createCampaign(IResolveFieldContext context, TrackingCampaignSubmission campaign) {
-		string id;
+		Guid userId;
 		if (context.User.Identity is ClaimsIdentity identity)
-			id = identity.FindFirst("id").Value;
+			userId = Guid.Parse(identity.FindFirst("id").Value);
 		else
 			throw new Exception("id claim missing");
 
+		Console.WriteLine($"[+] searching users by userId: ${userId}");
+		var user = OnTrackDBContext.ctx.Users.First(u => u.Id == userId);
+
 		var newCampaign = new TrackingCampaign();
 		newCampaign.Id = Guid.NewGuid();
-		newCampaign.OwnerId = Guid.Parse(id);
+		newCampaign.Owner = user;
 		newCampaign.CreatedAt = DateTime.Now;
 		newCampaign.Audience = new Random().Next(3, 100);
 
@@ -77,14 +79,14 @@ public class Mutation {
 	[Authorize(Policy = "AdminPolicy")]
 	public static Guid? updateCampaign(IResolveFieldContext context, string campaignId, TrackingCampaignSubmission campaign) {
 		Console.WriteLine("updateCampaign started!");
-		Guid id;
+		Guid userId;
 		if (context.User.Identity is ClaimsIdentity identity)
-			id = Guid.Parse(identity.FindFirst("id").Value);
+			userId = Guid.Parse(identity.FindFirst("id").Value);
 		else
 			throw new Exception("id claim missing");
 
 		var campaignGuid = Guid.Parse(campaignId);
-		var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.Id == campaignGuid && e.OwnerId == id).FirstOrDefault();
+		var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.Id == campaignGuid && e.Owner.Id == userId).FirstOrDefault();
 		if (existingCampaign == null)
 			throw new Exception("campaign not found!");
 

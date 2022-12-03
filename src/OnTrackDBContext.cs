@@ -9,11 +9,9 @@ public class OnTrackDBContext : DbContext {
 		get => (_ctx = _ctx ?? new OnTrackDBContext());
 	}
 
-	public DbSet<Blog> Blogs { get; set; } = null!;
-	public DbSet<Post> Posts { get; set; } = null!;
-	public DbSet<Comment> Comments { get; set; } = null!;
 	public DbSet<User> Users { get; set; } = null!;
 	public DbSet<TrackingCampaign> TrackingCampaigns { get; set; } = null!;
+	public DbSet<TrackerClick> TrackerClicks { get; set; } = null!;
 
 	protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 		=> optionsBuilder.UseNpgsql(Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING"));
