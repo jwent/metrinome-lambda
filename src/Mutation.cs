@@ -10,20 +10,21 @@ public class Mutation {
 	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("secretsecretsecret"));
 
 	public static string? loginUser(string email, string password) {
+		// find a user by email and password
 		var user = OnTrackDBContext.ctx.Users
 				.Where(u => u.Email == email && u.Password == password)
 				.FirstOrDefault();
-
 		if (user == null || user.Id == null)
 			return null;
 
+		// create a claim
 		var claims = new List<Claim> {
 			new Claim("id", user.Id.ToString()),
 			new Claim("role", "Admin")
 		};
 
+		// sign it
 		var signingCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
 		var token = new JwtSecurityToken(
 			"issuer",
 			"audience",
@@ -36,10 +37,15 @@ public class Mutation {
 	}
 
 	public static Guid? addUser(string email, string password) {
-		var user = new User { Id=Guid.NewGuid(), Email=email, Password=password };
+		// add the new user
+		var user = new User { Id=Guid.NewGuid(), Email=email, Password=password, CreatedAt=DateTime.Now };
 		OnTrackDBContext.ctx.Users.Add(user);
+		// add the user's tracker immediately
+		var tracker = new UserTracker { Id=Guid.NewGuid(), Owner=user, CreatedAt=DateTime.Now };
+		OnTrackDBContext.ctx.UserTrackers.Add(tracker);
 		OnTrackDBContext.ctx.SaveChanges();
 
+		// return is pointless
 		return user.Id;
 	}
 
@@ -53,10 +59,13 @@ public class Mutation {
 
 		Console.WriteLine($"[+] searching users by userId: ${userId}");
 		var user = OnTrackDBContext.ctx.Users.First(u => u.Id == userId);
+		Console.WriteLine($"[+] searching user trackers by userId: ${userId}");
+		var user_tracker = OnTrackDBContext.ctx.UserTrackers.First(t => t.Owner.Id == userId);
 
+		Console.WriteLine($"[+] creating the new campaign: ${campaign.CampaignName}");
 		var newCampaign = new TrackingCampaign();
 		newCampaign.Id = Guid.NewGuid();
-		newCampaign.Owner = user;
+		newCampaign.ParentTracker = user_tracker;
 		newCampaign.CreatedAt = DateTime.Now;
 		newCampaign.Audience = new Random().Next(3, 100);
 
@@ -86,7 +95,7 @@ public class Mutation {
 			throw new Exception("id claim missing");
 
 		var campaignGuid = Guid.Parse(campaignId);
-		var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.Id == campaignGuid && e.Owner.Id == userId).FirstOrDefault();
+		var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId).FirstOrDefault();
 		if (existingCampaign == null)
 			throw new Exception("campaign not found!");
 

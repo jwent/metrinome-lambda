@@ -10,10 +10,11 @@ public class OnTrackDBContext : DbContext {
 	}
 
 	public DbSet<User> Users { get; set; } = null!;
+	public DbSet<UserTracker> UserTrackers { get; set; } = null!;
 	public DbSet<TrackingCampaign> TrackingCampaigns { get; set; } = null!;
 	public DbSet<TrackerClick> TrackerClicks { get; set; } = null!;
+	public DbSet<TrackerClickExtraProperty> TrackerClickExtraProperties { get; set; } = null!;
 
 	protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 		=> optionsBuilder.UseNpgsql(Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING"));
-		// => optionsBuilder.UseNpgsql("Host=localhost;Database=docker;Username=docker;Password=docker");
 }
