@@ -87,6 +87,32 @@ public class TrackingCampaignData {
 	public int? BotClicks { get; set; }
 }
 
+public class TrackerClickData {
+	public TrackerClickData(TrackerClick click) {
+		this.Id = click.Id;
+		this.ParentTracker = click.ParentTracker;
+		this.Campaign = click.Campaign;
+		this.CreatedAt = click.CreatedAt;
+		this.Ip = click.Ip;
+		this.ClickUrl = click.ClickUrl;
+		this.Useragent = click.Useragent;
+		this.Referer = click.Referer;
+		this.IsBotClick = click.IsBotClick;
+	}
+
+	public Guid? Id { get; set; }
+	public UserTracker? ParentTracker { get; set; }
+	public TrackingCampaign? Campaign { get; set; }
+	public DateTime? CreatedAt { get; set; }
+
+	public string? Ip { get; set; }
+	public string? ClickUrl { get; set; }
+	public string? Useragent { get; set; }
+	public string? Referer { get; set; }
+
+	public bool? IsBotClick { get; set; }
+}
+
 
 
 public class TrackerClick {

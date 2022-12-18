@@ -17,7 +17,8 @@ public class Query {
 		var user_tracker = OnTrackDBContext.ctx.UserTrackers.First(t => t.Owner.Id == userId);
 
 		// return @"<script type=""text/javascript"">!function(){let a=document.createElement(""script"");a.type=""text/javascript"";a.async=!0;a.src=""http:// ontracktestdeployment.s3-website-us-east-1.amazonaws.com/landing?callback=skroCb&id="+id+@"&""+window.location.search.substring(1);let b=document.getElementsByTagName(""script"")[0];b.parentNode.insertBefore(a,b)}();</script>";
-		return @"<script type=""text/javascript"">(function(){ fetch('http://localhost:4000/?t=" + user_tracker.Id.ToString() + @"&r='+document.referrer+'&u='+window.location.href).then(j => j.json()).then(console.log)})();</script>";
+		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
+		return @"<script type=""text/javascript"">(function(){fetch('" + endpoint + "?t=" + user_tracker.Id.ToString() + @"&r='+window.btoa(document.referrer)+'&u='+window.btoa(window.location.href),{mode:'no-cors'})})();</script>";
 	}
 
 	[Authorize(Policy = "AdminPolicy")]
@@ -52,5 +53,26 @@ public class Query {
 					OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.IsBotClick == true).Count()))
 			.ToList();
 		return campaign_datas;
+	}
+
+	[Authorize(Policy = "AdminPolicy")]
+	public static List<TrackerClickData> myCampaignClicks(IResolveFieldContext context, string campaignId) {
+		Guid userId;
+		if (context.User.Identity is ClaimsIdentity identity)
+			userId = Guid.Parse(identity.FindFirst("id").Value);
+		else
+			throw new Exception("id claim missing");
+
+		var campaignGuid = Guid.Parse(campaignId);
+		Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
+		var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId);
+		if (existingCampaign == null)
+			throw new Exception("campaign not found!");
+
+		var datas = OnTrackDBContext.ctx.TrackerClicks.Where(e => e.Campaign.Id == campaignGuid).ToList()
+			.Select(click => new TrackerClickData(click))
+			.ToList();
+
+		return datas;
 	}
 }
