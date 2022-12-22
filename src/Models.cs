@@ -1,8 +1,11 @@
 using GraphQL;
 using GraphQL.Authorization;
+using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 
-
+[Index(nameof(Email), IsUnique=true)]
 public class User {
 	public Guid? Id { get; set; }
 	public string? Email { get; set; }
