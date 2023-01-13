@@ -18,9 +18,13 @@ public class Query {
 
 		// return @"<script type=""text/javascript"">!function(){let a=document.createElement(""script"");a.type=""text/javascript"";a.async=!0;a.src=""http:// ontracktestdeployment.s3-website-us-east-1.amazonaws.com/landing?callback=skroCb&id="+id+@"&""+window.location.search.substring(1);let b=document.getElementsByTagName(""script"")[0];b.parentNode.insertBefore(a,b)}();</script>";
 		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
-		return @"<script type=""text/javascript"">const clid = sessionStorage.getItem('clid') ? sessionStorage.getItem('clid') : window.location.search.substring(1);sessionStorage.setItem('clid',clid);const referrer = sessionStorage.getItem('referrer') ? sessionStorage.getItem('referrer') : window.btoa(document.referrer);sessionStorage.setItem('referrer',referrer);(function(){fetch('" + endpoint + "?t=" + user_tracker.Id.ToString() + @"&r='+referrer+'&u='+window.btoa(window.location.href)+'&clid='+clid,{mode:'no-cors'})})();</script>";
+		return @"<script type=""text/javascript"">const rpu = sessionStorage.getItem('rpu') ? sessionStorage.getItem('rpu') : window.btoa(window.location.href);sessionStorage.setItem('rpu',rpu);const rpr = sessionStorage.getItem('rpr') ? sessionStorage.getItem('rpr') : window.btoa(document.referrer);sessionStorage.setItem('rpr',rpr);(function(){fetch('" + endpoint + "?t=" + user_tracker.Id.ToString() + @"&r='+rpr+'&u='+rpu,{mode:'no-cors'})})();</script>";
 	}
-
+	[Authorize(Policy = "AdminPolicy")]
+	public static string? postbackCode(IResolveFieldContext context) {
+		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
+		return @"<script type=""text/javascript"">(function(){if(sessionStorage.getItem('rpu') && sessionStorage.getItem('rpr')){fetch('" + endpoint + "postback?r='+sessionStorage.getItem('rpr')+'&u='+sessionStorage.getItem('rpu'),{mode:'no-cors'})}})();</script>";
+	}
 	[Authorize(Policy = "AdminPolicy")]
 	public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId) {
 		Guid userId;
