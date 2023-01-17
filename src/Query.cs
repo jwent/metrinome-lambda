@@ -81,4 +81,29 @@ public class Query {
 
 		return datas;
 	}
+
+	public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, string campaignId) {
+		Guid userId;
+		if (context.User.Identity is ClaimsIdentity identity)
+			userId = Guid.Parse(identity.FindFirst("id").Value);
+		else
+			throw new Exception("id claim missing");
+
+		var campaignGuid = Guid.Parse(campaignId);
+		Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
+		var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId);
+		if (existingCampaign == null)
+			throw new Exception("campaign not found!");
+
+		var campaignData= new TrackingCampaignData(existingCampaign,
+					OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id).Count(),
+					OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
+					OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.IsBotClick == true).Count(),
+					OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true).Count(),
+					OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true && c.IsDesktop == true).Count());
+		var datas = OnTrackDBContext.ctx.TrackerClicks.Where(e => e.Campaign.Id == existingCampaign.Id).ToList()
+			.Select(click => new TrackerClickData(click))
+			.ToList();
+		return new TrackingCampaignDetails(campaignData,datas);
+	}
 }

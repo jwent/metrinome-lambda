@@ -143,3 +143,11 @@ public class TrackerClickExtraProperty {
 	public string? PropertyKey { get; set; }
 	public string? PropertyValue { get; set; }
 }
+public class TrackingCampaignDetails {
+	public TrackingCampaignDetails(TrackingCampaignData trackingCampaignData, List<TrackerClickData> trackerClickDatas) {
+		this.TrackingCampaignData=trackingCampaignData;
+		this.TrackerClickDatas=trackerClickDatas;
+	}
+	public TrackingCampaignData TrackingCampaignData {get;set;}
+	public List<TrackerClickData> TrackerClickDatas {get;set;}
+}
