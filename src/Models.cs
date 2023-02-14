@@ -28,9 +28,8 @@ public class TrackingCampaign {
 
 	public string? Platform { get; set; }
 	public string? CampaignName { get; set; }
-	public string? TargetedCountries { get; set; }
 	public string? CampaignBudget { get; set; }
-	public string? CampaignDuration { get; set; }
+	public string? ConversionValue { get; set; }
 
 	public string? WebsiteDomain { get; set; }
 	public string? CartPageURL { get; set; }
@@ -42,9 +41,8 @@ public class TrackingCampaign {
 public class TrackingCampaignSubmission {
 	public string? Platform { get; set; }
 	public string? CampaignName { get; set; }
-	public string? TargetedCountries { get; set; }
 	public string? CampaignBudget { get; set; }
-	public string? CampaignDuration { get; set; }
+	public string? ConversionValue { get; set; }
 
 	public string? WebsiteDomain { get; set; }
 	public string? CartPageURL { get; set; }
@@ -59,9 +57,8 @@ public class TrackingCampaignData {
 		this.CreatedAt = campaign.CreatedAt;
 		this.Platform = campaign.Platform;
 		this.CampaignName = campaign.CampaignName;
-		this.TargetedCountries = campaign.TargetedCountries;
 		this.CampaignBudget = campaign.CampaignBudget;
-		this.CampaignDuration = campaign.CampaignDuration;
+		this.ConversionValue = campaign.ConversionValue;
 		this.WebsiteDomain = campaign.WebsiteDomain;
 		this.CartPageURL = campaign.CartPageURL;
 		this.LandingPageURL = campaign.LandingPageURL;
@@ -78,9 +75,8 @@ public class TrackingCampaignData {
 
 	public string? Platform { get; set; }
 	public string? CampaignName { get; set; }
-	public string? TargetedCountries { get; set; }
 	public string? CampaignBudget { get; set; }
-	public string? CampaignDuration { get; set; }
+	public string? ConversionValue { get; set; }
 
 	public string? WebsiteDomain { get; set; }
 	public string? CartPageURL { get; set; }

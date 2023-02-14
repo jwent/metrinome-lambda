@@ -1,6 +1,7 @@
 using GraphQL;
 using GraphQL.Authorization;
 using System.Security.Claims;
+using System.Text.Json;
 
 public class Query {
 	public static string hello() => "hello world!";
@@ -23,7 +24,12 @@ public class Query {
 	[Authorize(Policy = "AdminPolicy")]
 	public static string? postbackCode(IResolveFieldContext context) {
 		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
-		return @"<script type=""text/javascript"">(function(){if(sessionStorage.getItem('rpu') && sessionStorage.getItem('rpr')){fetch('" + endpoint + "postback?r='+sessionStorage.getItem('rpr')+'&u='+sessionStorage.getItem('rpu'),{mode:'no-cors'})}})();</script>";
+		var postbackCode = new
+            {
+                page = @"<script type=""text/javascript"">(function(){if(sessionStorage.getItem('rpu') && sessionStorage.getItem('rpr')){fetch('" + endpoint + "postback?r='+sessionStorage.getItem('rpr')+'&u='+sessionStorage.getItem('rpu'),{mode:'no-cors'})}})();</script>",
+                button = @"<script type=""text/javascript"">function postClick(){if(sessionStorage.getItem('rpu') && sessionStorage.getItem('rpr')){fetch('" + endpoint + "postback?r='+sessionStorage.getItem('rpr')+'&u='+sessionStorage.getItem('rpu'),{mode:'no-cors'})}}; const confirmBtn=document.getElementById('{id}'); confirmBtn.addEventListener('click', postClick);</script>",
+            };
+		return JsonSerializer.Serialize(postbackCode);
 	}
 	[Authorize(Policy = "AdminPolicy")]
 	public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId) {

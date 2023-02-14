@@ -71,9 +71,8 @@ public class Mutation {
 
 		newCampaign.Platform = campaign.Platform ?? newCampaign.Platform;
 		newCampaign.CampaignName = campaign.CampaignName ?? newCampaign.CampaignName;
-		newCampaign.TargetedCountries = campaign.TargetedCountries ?? newCampaign.TargetedCountries;
 		newCampaign.CampaignBudget = campaign.CampaignBudget ?? newCampaign.CampaignBudget;
-		newCampaign.CampaignDuration = campaign.CampaignDuration ?? newCampaign.CampaignDuration;
+		newCampaign.ConversionValue = campaign.ConversionValue ?? newCampaign.ConversionValue;
 		newCampaign.WebsiteDomain = campaign.WebsiteDomain ?? newCampaign.WebsiteDomain;
 		newCampaign.CartPageURL = campaign.CartPageURL ?? newCampaign.CartPageURL;
 		newCampaign.LandingPageURL = campaign.LandingPageURL ?? newCampaign.LandingPageURL;
@@ -101,9 +100,8 @@ public class Mutation {
 
 		existingCampaign.Platform = campaign.Platform ?? existingCampaign.Platform;
 		existingCampaign.CampaignName = campaign.CampaignName ?? existingCampaign.CampaignName;
-		existingCampaign.TargetedCountries = campaign.TargetedCountries ?? existingCampaign.TargetedCountries;
 		existingCampaign.CampaignBudget = campaign.CampaignBudget ?? existingCampaign.CampaignBudget;
-		existingCampaign.CampaignDuration = campaign.CampaignDuration ?? existingCampaign.CampaignDuration;
+		existingCampaign.ConversionValue = campaign.ConversionValue ?? existingCampaign.ConversionValue;
 		existingCampaign.WebsiteDomain = campaign.WebsiteDomain ?? existingCampaign.WebsiteDomain;
 		existingCampaign.CartPageURL = campaign.CartPageURL ?? existingCampaign.CartPageURL;
 		existingCampaign.LandingPageURL = campaign.LandingPageURL ?? existingCampaign.LandingPageURL;
