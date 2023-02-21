@@ -52,7 +52,7 @@ public class TrackingCampaignSubmission {
 
 
 public class TrackingCampaignData {
-	public TrackingCampaignData(TrackingCampaign campaign, int Clicks, int UniqueClicks, int BotClicks, int Conversions,int DesktopClicks) {
+	public TrackingCampaignData(TrackingCampaign campaign, int Clicks, int UniqueClicks, int BotClicks, int Conversions, int DesktopClicks, int? Count=null) {
 		this.Id = campaign.Id;
 		this.CreatedAt = campaign.CreatedAt;
 		this.Platform = campaign.Platform;
@@ -68,6 +68,7 @@ public class TrackingCampaignData {
 		this.BotClicks = BotClicks;
 		this.Conversions=Conversions;
 		this.DesktopClicks=DesktopClicks;
+		this.Count=Count;
 	}
 
 	public Guid Id { get; set; }
@@ -88,6 +89,7 @@ public class TrackingCampaignData {
 	public int? BotClicks { get; set; }
 	public int? Conversions { get; set; }
 	public int? DesktopClicks { get; set; }
+    public int? Count { get; set; }
 }
 
 public class TrackerClickData {
@@ -140,10 +142,30 @@ public class TrackerClickExtraProperty {
 	public string? PropertyValue { get; set; }
 }
 public class TrackingCampaignDetails {
-	public TrackingCampaignDetails(TrackingCampaignData trackingCampaignData, List<TrackerClickData> trackerClickDatas) {
+	public TrackingCampaignDetails(TrackingCampaignData trackingCampaignData, Clicks clicks) {
 		this.TrackingCampaignData=trackingCampaignData;
-		this.TrackerClickDatas=trackerClickDatas;
+		this.Clicks=clicks;
 	}
 	public TrackingCampaignData TrackingCampaignData {get;set;}
-	public List<TrackerClickData> TrackerClickDatas {get;set;}
+	public Clicks Clicks {get;set;}
+}
+public class Campaigns
+{
+    public Campaigns(List<TrackingCampaignData> campaignDatas, int campaignCount)
+    {
+        this.CampaignDatas = campaignDatas;
+        this.CampaignCount = campaignCount;
+    }
+    public List<TrackingCampaignData> CampaignDatas { get; set; }
+    public int CampaignCount { get; set; }
+}
+public class Clicks
+{
+    public Clicks(List<TrackerClickData> clickDatas, int clickCount)
+    {
+        this.ClickDatas = clickDatas;
+        this.ClickCount = clickCount;
+    }
+    public List<TrackerClickData> ClickDatas { get; set; }
+    public int ClickCount { get; set; }
 }
