@@ -115,6 +115,7 @@ public class Query
         return new Clicks(clicksList,count);
     }
 
+    [Authorize(Policy = "AdminPolicy")]
     public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, string campaignId)
     {
         Guid userId;
