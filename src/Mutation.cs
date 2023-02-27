@@ -12,9 +12,14 @@ public class Mutation {
 	public static string? loginUser(string email, string password) {
 		// find a user by email and password
 		var user = OnTrackDBContext.ctx.Users
-				.Where(u => u.Email == email && u.Password == password)
+				.Where(u => u.Email == email)
 				.FirstOrDefault();
+
+		// verify that we found a user
 		if (user == null || user.Id == null)
+			return null;
+		// verify password
+		if (!Util.VerifyHash(password, user.Password))
 			return null;
 
 		// create a claim
@@ -22,7 +27,6 @@ public class Mutation {
 			new Claim("id", user.Id.ToString()),
 			new Claim("role", "Admin")
 		};
-
 		// sign it
 		var signingCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 		var token = new JwtSecurityToken(
@@ -37,8 +41,15 @@ public class Mutation {
 	}
 
 	public static Guid? addUser(string email, string password) {
+		// assert stuff
+		if (email.Length > 512)
+			throw new Exception("email is too long");
+
+		// salt and hash the new password
+		var passwordHash = Util.SaltAndHash(password);
+
 		// add the new user
-		var user = new User { Id=Guid.NewGuid(), Email=email, Password=password, CreatedAt=DateTime.Now };
+		var user = new User { Id=Guid.NewGuid(), Email=email, Password=passwordHash, CreatedAt=DateTime.Now };
 		OnTrackDBContext.ctx.Users.Add(user);
 		// add the user's tracker immediately
 		var tracker = new UserTracker { Id=Guid.NewGuid(), Owner=user, CreatedAt=DateTime.Now };
