@@ -44,7 +44,7 @@ builder.Services
 			ValidAudience = "audience",
 			ValidIssuer = "issuer",
 			RequireSignedTokens = false,
-			IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("secretsecretsecret"))
+			IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY")))
 		};
 
 		options.RequireHttpsMetadata = false;

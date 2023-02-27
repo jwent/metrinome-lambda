@@ -7,7 +7,7 @@ using GraphQL.Authorization;
 
 
 public class Mutation {
-	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("secretsecretsecret"));
+	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY")));
 
 	public static string? loginUser(string email, string password) {
 		// find a user by email and password
