@@ -52,7 +52,7 @@ builder.Services
 	});
 builder.Services
 	.AddAuthorization(policyBuilder => {
-		policyBuilder.AddPolicy("AdminPolicy", p => p.RequireClaim(ClaimTypes.Role, "Admin"));
+		policyBuilder.AddPolicy("CustomerPolicy", p => p.RequireClaim(ClaimTypes.Role, "Customer"));
 	});
 // builder.Services
 // 	.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
@@ -96,7 +96,7 @@ app.UseCors("DefaultPolicy");
 //     config.AuthorizationRequired = false;
 
 //     // require that the user be a member of at least one role listed
-//     config.AuthorizedRoles.Add("Admin");
+//     config.AuthorizedRoles.Add("Customer");
 // });
 app.UseEndpoints(endpoints =>
   endpoints.MapGraphQL());

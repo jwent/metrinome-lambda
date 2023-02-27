@@ -6,9 +6,9 @@ using System.Text.Json;
 public class Query
 {
     public static string hello() => "hello world!";
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = "CustomerPolicy")]
     public static List<User> users() => OnTrackDBContext.ctx.Users.ToList();
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = "CustomerPolicy")]
     public static string? trackerCode(IResolveFieldContext context)
     {
         Guid userId;
@@ -23,7 +23,7 @@ public class Query
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
         return @"<script type=""text/javascript"">const rpu = sessionStorage.getItem('rpu') ? sessionStorage.getItem('rpu') : window.btoa(window.location.href);sessionStorage.setItem('rpu',rpu);const rpr = sessionStorage.getItem('rpr') ? sessionStorage.getItem('rpr') : window.btoa(document.referrer);sessionStorage.setItem('rpr',rpr);(function(){fetch('" + endpoint + "?t=" + user_tracker.Id.ToString() + @"&r='+rpr+'&u='+rpu,{mode:'no-cors'})})();</script>";
     }
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = "CustomerPolicy")]
     public static string? postbackCode(IResolveFieldContext context)
     {
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
@@ -34,7 +34,7 @@ public class Query
         };
         return JsonSerializer.Serialize(postbackCode);
     }
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = "CustomerPolicy")]
     public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId)
     {
         Guid userId;
@@ -52,7 +52,7 @@ public class Query
         return existingCampaign;
     }
 
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = "CustomerPolicy")]
     public static Campaigns myCampaigns(IResolveFieldContext context, DateTime? createdAt)
     {
         Guid userId;
@@ -82,7 +82,7 @@ public class Query
         return new Campaigns(campaign_datas,count);
     }
 
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = "CustomerPolicy")]
     public static Clicks myCampaignClicks(IResolveFieldContext context, string campaignId, DateTime? createdAt)
     {
         Guid userId;
@@ -115,7 +115,7 @@ public class Query
         return new Clicks(clicksList,count);
     }
 
-    [Authorize(Policy = "AdminPolicy")]
+    [Authorize(Policy = "CustomerPolicy")]
     public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, string campaignId)
     {
         Guid userId;

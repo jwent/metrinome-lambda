@@ -25,7 +25,7 @@ public class Mutation {
 		// create a claim
 		var claims = new List<Claim> {
 			new Claim("id", user.Id.ToString()),
-			new Claim("role", "Admin")
+			new Claim("role", "Customer")
 		};
 		// sign it
 		var signingCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -60,7 +60,7 @@ public class Mutation {
 		return user.Id;
 	}
 
-	[Authorize(Policy = "AdminPolicy")]
+	[Authorize(Policy = "CustomerPolicy")]
 	public static Guid? createCampaign(IResolveFieldContext context, TrackingCampaignSubmission campaign) {
 		Guid userId;
 		if (context.User.Identity is ClaimsIdentity identity)
@@ -95,7 +95,7 @@ public class Mutation {
 		return newCampaign.Id;
 	}
 
-	[Authorize(Policy = "AdminPolicy")]
+	[Authorize(Policy = "CustomerPolicy")]
 	public static Guid? updateCampaign(IResolveFieldContext context, string campaignId, TrackingCampaignSubmission campaign) {
 		Console.WriteLine("updateCampaign started!");
 		Guid userId;
