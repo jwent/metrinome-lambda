@@ -27,8 +27,7 @@ public class Query
     public static string? postbackCode(IResolveFieldContext context)
     {
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
-        var postbackCode = new
-        {
+        var postbackCode = new {
             page = @"<script type=""text/javascript"">(function(){if(sessionStorage.getItem('rpu') && sessionStorage.getItem('rpr')){fetch('" + endpoint + "postback?r='+sessionStorage.getItem('rpr')+'&u='+sessionStorage.getItem('rpu'),{mode:'no-cors'})}})();</script>",
             button = @"<script type=""text/javascript"">function postClick(){if(sessionStorage.getItem('rpu') && sessionStorage.getItem('rpr')){fetch('" + endpoint + "postback?r='+sessionStorage.getItem('rpr')+'&u='+sessionStorage.getItem('rpu'),{mode:'no-cors'})}}; const confirmBtn=document.getElementById('{id}'); confirmBtn.addEventListener('click', postClick);</script>",
         };
@@ -61,15 +60,12 @@ public class Query
         else
             throw new Exception("id claim missing");
 
-        var campaigns = OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.ParentTracker.Owner.Id == userId).OrderByDescending(c=> c.CreatedAt);
+        var campaigns = OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.ParentTracker.Owner.Id == userId).OrderByDescending(c => c.CreatedAt);
         int count = campaigns.Count();
         List<TrackingCampaign> campaignList;
-        if (createdAt.HasValue)
-        {
+        if (createdAt.HasValue) {
             campaignList = campaigns.Where(e => e.CreatedAt < createdAt).Take(10).ToList();
-        }
-        else
-        {
+        } else {
             campaignList = campaigns.Take(10).ToList();
         }
         var campaign_datas = campaignList.Select(e => new TrackingCampaignData(e,
@@ -97,17 +93,14 @@ public class Query
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
-        var myClicks = OnTrackDBContext.ctx.TrackerClicks.Where(e => e.Campaign.Id == campaignGuid).OrderByDescending(c=> c.CreatedAt);;
+        var myClicks = OnTrackDBContext.ctx.TrackerClicks.Where(e => e.Campaign.Id == campaignGuid).OrderByDescending(c => c.CreatedAt);
         int count = myClicks.Count();
 
         List<TrackerClickData> clicksList;
-        if (createdAt.HasValue)
-        {
+        if (createdAt.HasValue) {
             clicksList = myClicks.Where(e => e.CreatedAt < createdAt).Take(10).Select(click => new TrackerClickData(click))
             .ToList();
-        }
-        else
-        {
+        } else {
             clicksList = myClicks.Take(10).Select(click => new TrackerClickData(click))
             .ToList();
         }
@@ -137,7 +130,7 @@ public class Query
                     OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true).Count(),
                     OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true && c.IsDesktop == true).Count());
         
-        var myClicks = OnTrackDBContext.ctx.TrackerClicks.Where(e => e.Campaign.Id == campaignGuid).OrderByDescending(c=> c.CreatedAt);
+        var myClicks = OnTrackDBContext.ctx.TrackerClicks.Where(e => e.Campaign.Id == campaignGuid).OrderByDescending(c => c.CreatedAt);
         int count = myClicks.Count();
         List<TrackerClickData> clicksList = myClicks.Take(10).Select(click => new TrackerClickData(click)).ToList();
         return new TrackingCampaignDetails(campaignData, new Clicks(clicksList,count));
