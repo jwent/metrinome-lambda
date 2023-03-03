@@ -93,16 +93,37 @@ public class Query
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
-        var myClicks = OnTrackDBContext.ctx.TrackerClicks.Where(e => e.Campaign.Id == campaignGuid).OrderByDescending(c => c.CreatedAt);
+        var myClicks = OnTrackDBContext.ctx.TrackerClicks
+                .Where(e => e.Campaign.Id == campaignGuid)
+                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                    click => new { click.Id, PropertyKey="ip_country" },
+                    extra => new { extra.ClickParent.Id, extra.PropertyKey },
+                    (click, extraCountry) => new { click, extraCountry }
+                )
+                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                    combined => new { combined.click.Id, PropertyKey="ip_region" },
+                    extra => new { extra.ClickParent.Id, extra.PropertyKey },
+                    (combined, extraRegion) => new { combined.click, combined.extraCountry, extraRegion }
+                )
+                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                    combined => new { combined.click.Id, PropertyKey="ip_city" },
+                    extra => new { extra.ClickParent.Id, extra.PropertyKey },
+                    (combined, extraCity) => new { combined.click, combined.extraCountry, combined.extraRegion, extraCity }
+                )
+                .OrderByDescending(combined => combined.click.CreatedAt);
         int count = myClicks.Count();
 
         List<TrackerClickData> clicksList;
         if (createdAt.HasValue) {
-            clicksList = myClicks.Where(e => e.CreatedAt < createdAt).Take(10).Select(click => new TrackerClickData(click))
-            .ToList();
+            clicksList = myClicks.Where(e => e.click.CreatedAt < createdAt)
+                    .Take(10)
+                    .Select(combined => new TrackerClickData(combined.click, combined.extraCountry, combined.extraRegion, combined.extraCity))
+                    .ToList();
         } else {
-            clicksList = myClicks.Take(10).Select(click => new TrackerClickData(click))
-            .ToList();
+            clicksList = myClicks
+                    .Take(10)
+                    .Select(combined => new TrackerClickData(combined.click, combined.extraCountry, combined.extraRegion, combined.extraCity))
+                    .ToList();
         }
         
         return new Clicks(clicksList,count);
@@ -130,9 +151,29 @@ public class Query
                     OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true).Count(),
                     OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true && c.IsDesktop == true).Count());
         
-        var myClicks = OnTrackDBContext.ctx.TrackerClicks.Where(e => e.Campaign.Id == campaignGuid).OrderByDescending(c => c.CreatedAt);
+        var myClicks = OnTrackDBContext.ctx.TrackerClicks
+                .Where(e => e.Campaign.Id == campaignGuid)
+                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                    click => new { click.Id, PropertyKey="ip_country" },
+                    extra => new { extra.ClickParent.Id, extra.PropertyKey },
+                    (click, extraCountry) => new { click, extraCountry }
+                )
+                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                    combined => new { combined.click.Id, PropertyKey="ip_region" },
+                    extra => new { extra.ClickParent.Id, extra.PropertyKey },
+                    (combined, extraRegion) => new { combined.click, combined.extraCountry, extraRegion }
+                )
+                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                    combined => new { combined.click.Id, PropertyKey="ip_city" },
+                    extra => new { extra.ClickParent.Id, extra.PropertyKey },
+                    (combined, extraCity) => new { combined.click, combined.extraCountry, combined.extraRegion, extraCity }
+                )
+                .OrderByDescending(combined => combined.click.CreatedAt);
         int count = myClicks.Count();
-        List<TrackerClickData> clicksList = myClicks.Take(10).Select(click => new TrackerClickData(click)).ToList();
+        List<TrackerClickData> clicksList = myClicks
+                .Take(10)
+                .Select(combined => new TrackerClickData(combined.click, combined.extraCountry, combined.extraRegion, combined.extraCity))
+                .ToList();
         return new TrackingCampaignDetails(campaignData, new Clicks(clicksList,count));
     }
 }

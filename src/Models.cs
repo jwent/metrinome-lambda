@@ -93,7 +93,7 @@ public class TrackingCampaignData {
 }
 
 public class TrackerClickData {
-	public TrackerClickData(TrackerClick click) {
+	public TrackerClickData(TrackerClick click, TrackerClickExtraProperty extraCountry, TrackerClickExtraProperty extraRegion, TrackerClickExtraProperty extraCity) {
 		this.Id = click.Id;
 		this.ParentTracker = click.ParentTracker;
 		this.Campaign = click.Campaign;
@@ -103,6 +103,9 @@ public class TrackerClickData {
 		this.Useragent = click.Useragent;
 		this.Referer = click.Referer;
 		this.IsBotClick = click.IsBotClick;
+		this.Country = extraCountry.PropertyValue;
+		this.Region = extraRegion.PropertyValue;
+		this.City = extraCity.PropertyValue;
 	}
 
 	public Guid? Id { get; set; }
@@ -116,6 +119,10 @@ public class TrackerClickData {
 	public string? Referer { get; set; }
 
 	public bool? IsBotClick { get; set; }
+
+	public string? Country { get; set; }
+	public string? Region { get; set; }
+	public string? City { get; set; }
 }
 
 
