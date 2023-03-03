@@ -132,7 +132,6 @@ public class TrackerClick {
 	public UserTracker? ParentTracker { get; set; }
 	public TrackingCampaign? Campaign { get; set; }
 	public DateTime? CreatedAt { get; set; }
-	public string? Clid { get; set; }
 	public string? Ip { get; set; }
 	public string? ClickUrl { get; set; }
 	public string? Useragent { get; set; }
