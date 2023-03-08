@@ -103,6 +103,7 @@ public class TrackerClickData {
 		this.Useragent = click.Useragent;
 		this.Referer = click.Referer;
 		this.IsBotClick = click.IsBotClick;
+		this.Conversion=click.Conversion;
 		this.Country = extraCountry.PropertyValue;
 		this.Region = extraRegion.PropertyValue;
 		this.City = extraCity.PropertyValue;
@@ -119,6 +120,7 @@ public class TrackerClickData {
 	public string? Referer { get; set; }
 
 	public bool? IsBotClick { get; set; }
+	public bool? Conversion { get; set; }
 
 	public string? Country { get; set; }
 	public string? Region { get; set; }
@@ -148,12 +150,14 @@ public class TrackerClickExtraProperty {
 	public string? PropertyValue { get; set; }
 }
 public class TrackingCampaignDetails {
-	public TrackingCampaignDetails(TrackingCampaignData trackingCampaignData, Clicks clicks) {
+	public TrackingCampaignDetails(TrackingCampaignData trackingCampaignData, Clicks clicks, ChartDatas chartDatas) {
 		this.TrackingCampaignData=trackingCampaignData;
 		this.Clicks=clicks;
-	}
-	public TrackingCampaignData TrackingCampaignData {get;set;}
-	public Clicks Clicks {get;set;}
+		this.ChartDatas=chartDatas;
+    }
+    public TrackingCampaignData TrackingCampaignData { get; set; }
+    public Clicks Clicks { get; set; }
+    public ChartDatas ChartDatas { get; set; }
 }
 public class Campaigns
 {
@@ -174,4 +178,17 @@ public class Clicks
     }
     public List<TrackerClickData> ClickDatas { get; set; }
     public int ClickCount { get; set; }
+}
+public class Location
+{
+    public string City { get; set; }
+    public int Count { get; set; }
+}
+public class ChartDatas
+{
+	public ChartDatas(List<Location> topLocations)
+	{
+		this.TopLocations=topLocations;
+	}
+    public List<Location> TopLocations { get; set; }
 }
