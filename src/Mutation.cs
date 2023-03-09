@@ -52,6 +52,7 @@ public class Mutation {
 		var user = new User { Id=Guid.NewGuid(), Email=email, Password=passwordHash, CreatedAt=DateTime.Now };
 		OnTrackDBContext.ctx.Users.Add(user);
 		// add the user's tracker immediately
+		OnTrackDBContext.ctx.SaveChanges();
 		var tracker = new UserTracker { Id=Guid.NewGuid(), Owner=user, CreatedAt=DateTime.Now };
 		OnTrackDBContext.ctx.UserTrackers.Add(tracker);
 		OnTrackDBContext.ctx.SaveChanges();
