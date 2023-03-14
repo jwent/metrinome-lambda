@@ -192,3 +192,9 @@ public class ChartDatas
 	}
     public List<Location> TopLocations { get; set; }
 }
+
+public class AddUserResponse {
+	public Guid? Id { get; set; }
+	public String? Error { get; set; }
+}
+

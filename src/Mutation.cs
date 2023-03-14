@@ -40,25 +40,45 @@ public class Mutation {
 		return new JwtSecurityTokenHandler().WriteToken(token);
 	}
 
-	public static Guid? addUser(string email, string password) {
+	public static AddUserResponse addUser(string email, string password) {
+		// find a user by email and password
+		var possibleUser = OnTrackDBContext.ctx.Users
+				.Where(u => u.Email == email)
+				.FirstOrDefault();
+		if (possibleUser != null) {
+			Console.WriteLine("duplicate user!");
+			return new AddUserResponse { Error="duplicate email" };
+		}
+
 		// assert stuff
-		if (email.Length > 512)
-			throw new Exception("email is too long");
+		if (email.Length > 128)
+			return new AddUserResponse { Error="email too long" };
 
 		// salt and hash the new password
 		var passwordHash = Util.SaltAndHash(password);
 
-		// add the new user
+		Console.WriteLine("email");
+
 		var user = new User { Id=Guid.NewGuid(), Email=email, Password=passwordHash, CreatedAt=DateTime.Now };
-		OnTrackDBContext.ctx.Users.Add(user);
+		try {
+			// add the new user
+			OnTrackDBContext.ctx.Users.Add(user);
+			// try to commit the user
+			OnTrackDBContext.ctx.SaveChanges();
+
+		} catch (Microsoft.EntityFrameworkCore.DbUpdateException e) {
+			Console.WriteLine("duplicate user key error");
+			OnTrackDBContext.ctx.Users.Remove(user);
+			return new AddUserResponse { Error="duplicate email" };
+		}
+
 		// add the user's tracker immediately
-		OnTrackDBContext.ctx.SaveChanges();
 		var tracker = new UserTracker { Id=Guid.NewGuid(), Owner=user, CreatedAt=DateTime.Now };
 		OnTrackDBContext.ctx.UserTrackers.Add(tracker);
 		OnTrackDBContext.ctx.SaveChanges();
 
 		// return is pointless
-		return user.Id;
+		return new AddUserResponse { Id=user.Id };
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]

@@ -7,6 +7,7 @@ public class OnTrackDBContext : DbContext {
 	private static OnTrackDBContext? _ctx = null;
 	public static OnTrackDBContext ctx {
 		get => (_ctx = _ctx ?? new OnTrackDBContext());
+		set => _ctx = value;
 	}
 
 	public DbSet<User> Users { get; set; } = null!;
