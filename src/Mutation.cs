@@ -47,12 +47,12 @@ public class Mutation {
 				.FirstOrDefault();
 		if (possibleUser != null) {
 			Console.WriteLine("duplicate user!");
-			return new AddUserResponse { Error="duplicate email" };
+			return new AddUserResponse { Error="Invalid or duplicate email." };
 		}
 
 		// assert stuff
 		if (email.Length > 128)
-			return new AddUserResponse { Error="email too long" };
+			return new AddUserResponse { Error="Invalid or duplicate email." };
 
 		// salt and hash the new password
 		var passwordHash = Util.SaltAndHash(password);
@@ -69,7 +69,7 @@ public class Mutation {
 		} catch (Microsoft.EntityFrameworkCore.DbUpdateException e) {
 			Console.WriteLine("duplicate user key error");
 			OnTrackDBContext.ctx.Users.Remove(user);
-			return new AddUserResponse { Error="duplicate email" };
+			return new AddUserResponse { Error="Invalid or duplicate email." };
 		}
 
 		// add the user's tracker immediately
