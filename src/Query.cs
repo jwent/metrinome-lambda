@@ -19,9 +19,22 @@ public class Query
 
         var user_tracker = OnTrackDBContext.ctx.UserTrackers.First(t => t.Owner.Id == userId);
 
-        // return @"<script type=""text/javascript"">!function(){let a=document.createElement(""script"");a.type=""text/javascript"";a.async=!0;a.src=""http:// ontracktestdeployment.s3-website-us-east-1.amazonaws.com/landing?callback=skroCb&id="+id+@"&""+window.location.search.substring(1);let b=document.getElementsByTagName(""script"")[0];b.parentNode.insertBefore(a,b)}();</script>";
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
-        return @"<script type=""text/javascript"">const urlParams = new URLSearchParams(window.location.search);const cid=urlParams.get('cid');if(cid){const rpu = window.btoa(window.location.href);const rpr = window.btoa(document.referrer);(function(){fetch('" + endpoint + "?t=" + user_tracker.Id.ToString() + @"&r='+rpr+'&u='+rpu).then((response) => response.json()).then((data) => sessionStorage.setItem('clid',data.clid))})();}</script>";
+        return Util.CompressJavascriptStub(@"<script type=""text/javascript"">
+    (function(){
+        const urlParams = new URLSearchParams(window.location.search);
+        const cid=urlParams.get('cid');
+        if(cid){
+            const rpu = window.btoa(window.location.href);
+            const rpr = window.btoa(document.referrer);
+            (function(){
+                fetch('" + endpoint + "?t=" + user_tracker.Id.ToString() + @"&r='+rpr+'&u='+rpu)
+                    .then(r => r.json())
+                    .then(d => sessionStorage.setItem('clid',d.clid))
+                })();
+        }
+    })()
+</script>");
     }
     [Authorize(Policy = "CustomerPolicy")]
     public static string? postbackCode(IResolveFieldContext context)
@@ -29,8 +42,22 @@ public class Query
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
         var postbackCode = new
         {
-            page = @"<script type=""text/javascript"">(function(){if(sessionStorage.getItem('clid')){fetch('" + endpoint + "postback?clid='+sessionStorage.getItem('clid'),{mode:'no-cors'})}})();</script>",
-            button = @"<script type=""text/javascript"">function postClick(){if(sessionStorage.getItem('clid')){fetch('" + endpoint + "postback?clid='+sessionStorage.getItem('clid'),{mode:'no-cors'})}}; const confirmBtn=document.getElementById('{id}'); confirmBtn.addEventListener('click', postClick);</script>",
+            page = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
+    (function(){
+        if(sessionStorage.getItem('clid')){
+            fetch('" + endpoint + @"postback?clid='+sessionStorage.getItem('clid'),{mode:'no-cors'})
+        }
+    })()
+</script>"),
+            button = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
+    (function(){
+        document.getElementById('{id}').addEventListener('click',function(){
+            if(sessionStorage.getItem('clid')){
+                fetch('" + endpoint + @"postback?clid='+sessionStorage.getItem('clid'),{mode:'no-cors'})
+            }
+        });
+    })()
+</script>"),
         };
         return JsonSerializer.Serialize(postbackCode);
     }

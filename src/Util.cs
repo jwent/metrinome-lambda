@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 public class Util {
 
@@ -46,5 +47,14 @@ public class Util {
 		);
 
 		return CryptographicOperations.FixedTimeEquals(inputHash, hash);
+	}
+
+	public static string CompressJavascriptStub(string javascriptStub) {
+		javascriptStub = Regex.Replace(javascriptStub, @"\s*\}\s*", "}");
+		javascriptStub = Regex.Replace(javascriptStub, @"\s*\{\s*", "{");
+		javascriptStub = Regex.Replace(javascriptStub, @"\s*\(\)\s*", "()");
+		javascriptStub = Regex.Replace(javascriptStub, @"\r?\n\s+", "");
+
+		return javascriptStub;
 	}
 }
