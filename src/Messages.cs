@@ -126,7 +126,13 @@ public class ChartDatas
 
 public class AddUserResponse {
 	public Guid? Id { get; set; }
-	public String? Error { get; set; }
+	public string? Error { get; set; }
+}
+
+
+public class PostbackCodes {
+    public string PagePostback { get; set; }
+    public string ButtonPostback { get; set; }
 }
 
 

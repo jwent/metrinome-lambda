@@ -37,19 +37,18 @@ public class Query
 </script>");
     }
     [Authorize(Policy = "CustomerPolicy")]
-    public static string? postbackCode(IResolveFieldContext context)
+    public static PostbackCodes postbackCode(IResolveFieldContext context)
     {
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
-        var postbackCode = new
-        {
-            page = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
+        return new PostbackCodes {
+            PagePostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
     (function(){
         if(sessionStorage.getItem('clid')){
             fetch('" + endpoint + @"postback?clid='+sessionStorage.getItem('clid'),{mode:'no-cors'})
         }
     })()
 </script>"),
-            button = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
+            ButtonPostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
     (function(){
         document.getElementById('{id}').addEventListener('click',function(){
             if(sessionStorage.getItem('clid')){
@@ -59,7 +58,6 @@ public class Query
     })()
 </script>"),
         };
-        return JsonSerializer.Serialize(postbackCode);
     }
     [Authorize(Policy = "CustomerPolicy")]
     public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId)
