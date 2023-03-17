@@ -4,7 +4,7 @@ using System.Security.Claims;
 using System.Text;
 using GraphQL;
 using GraphQL.Authorization;
-
+using System.Text.Json;
 
 public class Mutation {
 	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY")));
@@ -17,10 +17,10 @@ public class Mutation {
 
 		// verify that we found a user
 		if (user == null || user.Id == null)
-			return null;
+            return JsonSerializer.Serialize(new { status = "Error", message = "Invalid email or password." });
 		// verify password
 		if (!Util.VerifyHash(password, user.Password))
-			return null;
+			return JsonSerializer.Serialize(new { status = "Error", message = "Invalid email or password." });
 
 		// create a claim
 		var claims = new List<Claim> {
@@ -36,8 +36,8 @@ public class Mutation {
 			expires: DateTime.Now.AddDays(1),
 			signingCredentials: signingCredentials
 		);
-
-		return new JwtSecurityTokenHandler().WriteToken(token);
+        var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+		return JsonSerializer.Serialize(new { status = "OK", message = tokenString });
 	}
 
 	public static AddUserResponse addUser(string email, string password) {
