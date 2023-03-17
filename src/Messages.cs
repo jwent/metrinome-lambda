@@ -135,6 +135,9 @@ public class PostbackCodes {
     public string ButtonPostback { get; set; }
 }
 
-
+public class LoginUserResponse {
+    public string? BearerToken { get; set; }
+    public string? Error { get; set; }
+}
 
 

@@ -1,7 +1,6 @@
 using GraphQL;
 using GraphQL.Authorization;
 using System.Security.Claims;
-using System.Text.Json;
 
 public class Query
 {

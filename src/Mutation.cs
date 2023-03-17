@@ -4,12 +4,11 @@ using System.Security.Claims;
 using System.Text;
 using GraphQL;
 using GraphQL.Authorization;
-using System.Text.Json;
 
 public class Mutation {
 	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY")));
 
-	public static string? loginUser(string email, string password) {
+	public static LoginUserResponse loginUser(string email, string password) {
 		// find a user by email and password
 		var user = OnTrackDBContext.ctx.Users
 				.Where(u => u.Email == email)
@@ -17,10 +16,10 @@ public class Mutation {
 
 		// verify that we found a user
 		if (user == null || user.Id == null)
-            return JsonSerializer.Serialize(new { status = "Error", message = "Invalid email or password." });
+            return new LoginUserResponse { Error="Invalid email or password." };
 		// verify password
 		if (!Util.VerifyHash(password, user.Password))
-			return JsonSerializer.Serialize(new { status = "Error", message = "Invalid email or password." });
+			return new LoginUserResponse { Error="Invalid email or password." };
 
 		// create a claim
 		var claims = new List<Claim> {
@@ -36,8 +35,11 @@ public class Mutation {
 			expires: DateTime.Now.AddDays(1),
 			signingCredentials: signingCredentials
 		);
+		// create token
         var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-		return JsonSerializer.Serialize(new { status = "OK", message = tokenString });
+
+        // return token
+		return new LoginUserResponse { BearerToken=tokenString };
 	}
 
 	public static AddUserResponse addUser(string email, string password) {
