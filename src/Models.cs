@@ -37,20 +37,12 @@ public class TrackingCampaign {
 	public string? PrivacyPageURL { get; set; }
 }
 
-
-public class TrackingCampaignSubmission {
-	public string? Platform { get; set; }
-	public string? CampaignName { get; set; }
-	public string? CampaignBudget { get; set; }
-	public string? ConversionValue { get; set; }
-
-	public string? WebsiteDomain { get; set; }
-	public string? CartPageURL { get; set; }
-	public string? LandingPageURL { get; set; }
-	public string? PrivacyPageURL { get; set; }
+public class TrackingCampaignExtraProperty {
+	public Guid? Id { get; set; }
+	public TrackingCampaign? Parent { get; set; }
+	public string? PropertyKey { get; set; }
+	public string? PropertyValue { get; set; }
 }
-
-
 
 public class TrackerClick {
 	public Guid? Id { get; set; }
@@ -66,6 +58,7 @@ public class TrackerClick {
 	public bool? Conversion { get; set; }
     public bool? IsDesktop { get; set; }
 }
+
 public class TrackerClickExtraProperty {
 	public Guid? Id { get; set; }
 	public TrackerClick? ClickParent { get; set; }

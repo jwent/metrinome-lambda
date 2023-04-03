@@ -2,6 +2,26 @@
 
 
 
+public class TrackingCampaignSubmission {
+    public string? Platform { get; set; }
+    public string? CampaignName { get; set; }
+    public string? CampaignBudget { get; set; }
+    public string? ConversionValue { get; set; }
+
+    public string? WebsiteDomain { get; set; }
+    public string? CartPageURL { get; set; }
+    public string? LandingPageURL { get; set; }
+    public string? PrivacyPageURL { get; set; }
+
+    public TrackingCampaignSubmissionExtras? Properties { get; set; }
+}
+
+public class TrackingCampaignSubmissionExtras {
+    public string? CampaignType { get; set; }
+    public string? PrimaryCampaignObjective { get; set; }
+}
+
+
 public class TrackingCampaignData {
     public TrackingCampaignData(TrackingCampaign campaign, int Clicks, int UniqueClicks, int BotClicks, int Conversions, int DesktopClicks, int? Count=null) {
         this.Id = campaign.Id;
@@ -112,7 +132,7 @@ public class Clicks
 }
 public class Location
 {
-    public string City { get; set; }
+    public string? City { get; set; }
     public int Count { get; set; }
 }
 public class ChartDatas
@@ -131,8 +151,8 @@ public class AddUserResponse {
 
 
 public class PostbackCodes {
-    public string PagePostback { get; set; }
-    public string ButtonPostback { get; set; }
+    public string? PagePostback { get; set; }
+    public string? ButtonPostback { get; set; }
 }
 
 public class LoginUserResponse {

@@ -172,8 +172,10 @@ public class Query
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
         var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId);
-        if (existingCampaign == null)
+        if (existingCampaign == null) {
             throw new Exception("campaign not found!");
+            return null;
+        }
 
         var campaignData = new TrackingCampaignData(existingCampaign,
                     OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id).Count(),
