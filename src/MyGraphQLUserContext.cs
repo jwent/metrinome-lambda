@@ -10,14 +10,9 @@ using System.Security.Claims;
 
 public class MyGraphQLUserContext : Dictionary<string, object?> {
 	public ClaimsPrincipal User { get; set; }
-	public string? UserId { get {
-		if (User.Identity is ClaimsIdentity identity) {
-			return identity.FindFirst("id")?.Value;
-		}
-		return null;
-	} }
-
 	public MyGraphQLUserContext(ClaimsPrincipal user) {
 		User = user;
 	}
 }
+
+

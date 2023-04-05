@@ -1,3 +1,6 @@
+using System.Security.Claims;
+using GraphQL;
+using GraphQL.Authorization;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
@@ -56,5 +59,12 @@ public class Util {
 		javascriptStub = Regex.Replace(javascriptStub, @"\r?\n\s+", "");
 
 		return javascriptStub;
+	}
+
+	public static Guid GetCurrentUserId(IResolveFieldContext context) {
+		if (context.User.Identity is ClaimsIdentity identity)
+			return Guid.Parse(identity.FindFirst("id").Value);
+		else
+			throw new Exception("id claim missing");
 	}
 }

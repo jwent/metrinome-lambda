@@ -83,11 +83,7 @@ public class Mutation {
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static Guid? createCampaign(IResolveFieldContext context, TrackingCampaignSubmission campaign) {
-		Guid userId;
-		if (context.User.Identity is ClaimsIdentity identity)
-			userId = Guid.Parse(identity.FindFirst("id").Value);
-		else
-			throw new Exception("id claim missing");
+		var userId = Util.GetCurrentUserId(context);
 
 		Console.WriteLine($"[+] searching users by userId: ${userId}");
 		var user = OnTrackDBContext.ctx.Users.First(u => u.Id == userId);

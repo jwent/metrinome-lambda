@@ -8,13 +8,8 @@ public class Query
     [Authorize(Policy = "CustomerPolicy")]
     public static List<User> users() => OnTrackDBContext.ctx.Users.ToList();
     [Authorize(Policy = "CustomerPolicy")]
-    public static string? trackerCode(IResolveFieldContext context)
-    {
-        Guid userId;
-        if (context.User.Identity is ClaimsIdentity identity)
-            userId = Guid.Parse(identity.FindFirst("id").Value);
-        else
-            throw new Exception("id claim missing");
+    public static string? trackerCode(IResolveFieldContext context) {
+        var userId = Util.GetCurrentUserId(context);
 
         var user_tracker = OnTrackDBContext.ctx.UserTrackers.First(t => t.Owner.Id == userId);
 
@@ -35,9 +30,9 @@ public class Query
     })()
 </script>");
     }
+
     [Authorize(Policy = "CustomerPolicy")]
-    public static PostbackCodes postbackCode(IResolveFieldContext context)
-    {
+    public static PostbackCodes postbackCode(IResolveFieldContext context) {
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
         return new PostbackCodes {
             PagePostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
@@ -58,14 +53,10 @@ public class Query
 </script>"),
         };
     }
+
     [Authorize(Policy = "CustomerPolicy")]
-    public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId)
-    {
-        Guid userId;
-        if (context.User.Identity is ClaimsIdentity identity)
-            userId = Guid.Parse(identity.FindFirst("id").Value);
-        else
-            throw new Exception("id claim missing");
+    public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId) {
+        var userId = Util.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
@@ -77,13 +68,8 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Campaigns myCampaigns(IResolveFieldContext context, DateTime? createdAt)
-    {
-        Guid userId;
-        if (context.User.Identity is ClaimsIdentity identity)
-            userId = Guid.Parse(identity.FindFirst("id").Value);
-        else
-            throw new Exception("id claim missing");
+    public static Campaigns myCampaigns(IResolveFieldContext context, DateTime? createdAt) {
+        var userId = Util.GetCurrentUserId(context);
 
         var campaigns = OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.ParentTracker.Owner.Id == userId).OrderByDescending(c => c.CreatedAt);
         int count = campaigns.Count();
@@ -107,13 +93,8 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Clicks myCampaignClicks(IResolveFieldContext context, string campaignId, DateTime? createdAt)
-    {
-        Guid userId;
-        if (context.User.Identity is ClaimsIdentity identity)
-            userId = Guid.Parse(identity.FindFirst("id").Value);
-        else
-            throw new Exception("id claim missing");
+    public static Clicks myCampaignClicks(IResolveFieldContext context, string campaignId, DateTime? createdAt) {
+        var userId = Util.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
@@ -161,21 +142,14 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, string campaignId)
-    {
-        Guid userId;
-        if (context.User.Identity is ClaimsIdentity identity)
-            userId = Guid.Parse(identity.FindFirst("id").Value);
-        else
-            throw new Exception("id claim missing");
+    public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, string campaignId) {
+        var userId = Util.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
         var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId);
-        if (existingCampaign == null) {
+        if (existingCampaign == null)
             throw new Exception("campaign not found!");
-            return null;
-        }
 
         var campaignData = new TrackingCampaignData(existingCampaign,
                     OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id).Count(),
