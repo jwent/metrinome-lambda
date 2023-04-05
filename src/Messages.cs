@@ -13,13 +13,14 @@ public class TrackingCampaignSubmission {
     public string? LandingPageURL { get; set; }
     public string? PrivacyPageURL { get; set; }
 
-    public TrackingCampaignSubmissionExtras? Properties { get; set; }
-}
-
-public class TrackingCampaignSubmissionExtras {
     public string? CampaignType { get; set; }
     public string? PrimaryCampaignObjective { get; set; }
 }
+
+// public class TrackingCampaignSubmissionExtras {
+//     public string? CampaignType { get; set; }
+//     public string? PrimaryCampaignObjective { get; set; }
+// }
 
 
 public class TrackingCampaignData {

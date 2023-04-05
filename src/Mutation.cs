@@ -113,13 +113,13 @@ public class Mutation {
 			Id = Guid.NewGuid(),
 			Parent = newCampaign,
 			PropertyKey = "CampaignType",
-			PropertyValue = campaign.Properties?.CampaignType ?? "Google Ads Search Campaign",
+			PropertyValue = campaign.CampaignType ?? "Google Ads Search Campaign",
 		};
 		var PrimaryCampaignObjectiveProperty = new TrackingCampaignExtraProperty {
 			Id = Guid.NewGuid(),
 			Parent = newCampaign,
 			PropertyKey = "PrimaryCampaignObjective",
-			PropertyValue = campaign.Properties?.PrimaryCampaignObjective ?? "Sales",
+			PropertyValue = campaign.PrimaryCampaignObjective ?? "Sales",
 		};
 
 		OnTrackDBContext.ctx.TrackingCampaignExtraProperties.Add(CampaignTypeProperty);
