@@ -13,6 +13,13 @@ public class User {
 	public DateTime? CreatedAt { get; set; }
 }
 
+public class UserExtraProperty {
+	public Guid? Id { get; set; }
+	public User? Parent { get; set; }
+	public string? PropertyKey { get; set; }
+	public string? PropertyValue { get; set; }
+}
+
 public class UserTracker {
 	public Guid Id { get; set; }
 	public User? Owner { get; set; }

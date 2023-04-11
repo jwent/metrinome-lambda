@@ -42,7 +42,7 @@ public class Mutation {
 		return new LoginUserResponse { BearerToken=tokenString };
 	}
 
-	public static AddUserResponse addUser(string email, string password) {
+	public static AddUserResponse addUser(string fullname, string email, string password) {
 		// find a user by email and password
 		var possibleUser = OnTrackDBContext.ctx.Users
 				.Where(u => u.Email == email)
@@ -53,8 +53,12 @@ public class Mutation {
 		}
 
 		// assert stuff
+		if (fullname.Length > 128)
+			return new AddUserResponse { Error="Invalid fullname." };
 		if (email.Length > 128)
 			return new AddUserResponse { Error="Invalid or duplicate email." };
+		if (password.Length < 8)
+			return new AddUserResponse { Error="Password too short." };
 
 		// salt and hash the new password
 		var passwordHash = Util.SaltAndHash(password);
@@ -75,6 +79,14 @@ public class Mutation {
 		// add the user's tracker immediately
 		var tracker = new UserTracker { Id=Guid.NewGuid(), Owner=user, CreatedAt=DateTime.Now };
 		OnTrackDBContext.ctx.UserTrackers.Add(tracker);
+		OnTrackDBContext.ctx.SaveChanges();
+
+		OnTrackDBContext.ctx.UserExtraProperties.Add(new UserExtraProperty {
+			Id = Guid.NewGuid(),
+			Parent = user,
+			PropertyKey = "FullName",
+			PropertyValue = fullname,
+		});
 		OnTrackDBContext.ctx.SaveChanges();
 
 		// return is pointless

@@ -2,6 +2,13 @@
 
 
 
+public class UserData {
+    public string? Email { get; set; }
+    public DateTime? CreatedAt { get; set; }
+    
+    public string? FullName { get; set; }
+}
+
 public class TrackingCampaignSubmission {
     public string? Platform { get; set; }
     public string? CampaignName { get; set; }

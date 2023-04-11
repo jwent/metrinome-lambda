@@ -5,8 +5,26 @@ using System.Security.Claims;
 public class Query
 {
     public static string hello() => "hello world!";
+    // [Authorize(Policy = "CustomerPolicy")]
+    // public static List<User> users() => OnTrackDBContext.ctx.Users.ToList();
+
     [Authorize(Policy = "CustomerPolicy")]
-    public static List<User> users() => OnTrackDBContext.ctx.Users.ToList();
+    public static UserData getUserData(IResolveFieldContext context) {
+        var userId = Util.GetCurrentUserId(context);
+        var userdata = OnTrackDBContext.ctx.Users
+            .Where(u => u.Id == userId)
+            .Join(OnTrackDBContext.ctx.UserExtraProperties,
+                user => new { user.Id, PropertyKey = "FullName" },
+                extra => new { extra.Parent.Id, extra.PropertyKey },
+                (user, extraFullName) => new { user, extraFullName }
+            ).First();
+        return new UserData {
+            Email = userdata.user.Email,
+            CreatedAt = userdata.user.CreatedAt,
+            FullName = userdata.extraFullName.PropertyValue,
+        };
+    }
+
     [Authorize(Policy = "CustomerPolicy")]
     public static string? trackerCode(IResolveFieldContext context) {
         var userId = Util.GetCurrentUserId(context);

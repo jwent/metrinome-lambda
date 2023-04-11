@@ -11,6 +11,7 @@ public class OnTrackDBContext : DbContext {
 	}
 
 	public DbSet<User> Users { get; set; } = null!;
+	public DbSet<UserExtraProperty> UserExtraProperties { get; set; } = null!;
 	public DbSet<UserTracker> UserTrackers { get; set; } = null!;
 	public DbSet<TrackingCampaign> TrackingCampaigns { get; set; } = null!;
 	public DbSet<TrackingCampaignExtraProperty> TrackingCampaignExtraProperties { get; set; } = null!;
