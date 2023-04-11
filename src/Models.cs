@@ -55,6 +55,7 @@ public class TrackerClick {
 	public string? Referer { get; set; }
 
 	public bool? IsBotClick { get; set; }
+	public DateTime? ConversionDate { get; set; }
 	public bool? Conversion { get; set; }
     public bool? IsDesktop { get; set; }
 }
