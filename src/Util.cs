@@ -68,9 +68,9 @@ public class Util {
 			throw new Exception("id claim missing");
 	}
 
-	public static TrackingCampaign GetCampaignById(Guid userId, Guid id) {
+	public static TrackingCampaign GetCampaignById(OnTrackDBContext onTrackDBContext, Guid userId, Guid id) {
 		Console.WriteLine($"[+] searching campaigns by campaignId: ${id}");
-		var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.FirstOrDefault(e => e.Id == id && e.ParentTracker.Owner.Id == userId);
+		var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == id && e.ParentTracker.Owner.Id == userId);
 		if (existingCampaign == null)
 		    throw new Exception("campaign not found!");
 		return existingCampaign;

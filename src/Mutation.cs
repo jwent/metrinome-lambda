@@ -8,9 +8,10 @@ using GraphQL.Authorization;
 public class Mutation {
 	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY")));
 
-	public static LoginUserResponse loginUser(string email, string password) {
+
+    public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
 		// find a user by email and password
-		var user = OnTrackDBContext.ctx.Users
+		var user = onTrackDBContext.Users
 				.Where(u => u.Email == email)
 				.FirstOrDefault();
 
@@ -42,9 +43,9 @@ public class Mutation {
 		return new LoginUserResponse { BearerToken=tokenString };
 	}
 
-	public static AddUserResponse addUser(string fullname, string email, string password) {
+	public static AddUserResponse addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password) {
 		// find a user by email and password
-		var possibleUser = OnTrackDBContext.ctx.Users
+		var possibleUser = onTrackDBContext.Users
 				.Where(u => u.Email == email)
 				.FirstOrDefault();
 		if (possibleUser != null) {
@@ -66,41 +67,41 @@ public class Mutation {
 		var user = new User { Id=Guid.NewGuid(), Email=email, Password=passwordHash, CreatedAt=DateTime.Now };
 		try {
 			// add the new user
-			OnTrackDBContext.ctx.Users.Add(user);
+			onTrackDBContext.Users.Add(user);
 			// try to commit the user
-			OnTrackDBContext.ctx.SaveChanges();
+			onTrackDBContext.SaveChanges();
 
 		} catch (Microsoft.EntityFrameworkCore.DbUpdateException e) {
 			Console.WriteLine("duplicate user key error");
-			OnTrackDBContext.ctx.Users.Remove(user);
+			onTrackDBContext.Users.Remove(user);
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 		}
 
 		// add the user's tracker immediately
 		var tracker = new UserTracker { Id=Guid.NewGuid(), Owner=user, CreatedAt=DateTime.Now };
-		OnTrackDBContext.ctx.UserTrackers.Add(tracker);
-		OnTrackDBContext.ctx.SaveChanges();
+		onTrackDBContext.UserTrackers.Add(tracker);
+		onTrackDBContext.SaveChanges();
 
-		OnTrackDBContext.ctx.UserExtraProperties.Add(new UserExtraProperty {
+		onTrackDBContext.UserExtraProperties.Add(new UserExtraProperty {
 			Id = Guid.NewGuid(),
 			Parent = user,
 			PropertyKey = "FullName",
 			PropertyValue = fullname,
 		});
-		OnTrackDBContext.ctx.SaveChanges();
+		onTrackDBContext.SaveChanges();
 
 		// return is pointless
 		return new AddUserResponse { Id=user.Id };
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]
-	public static Guid? createCampaign(IResolveFieldContext context, TrackingCampaignSubmission campaign) {
+	public static Guid? createCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, TrackingCampaignSubmission campaign) {
 		var userId = Util.GetCurrentUserId(context);
 
 		Console.WriteLine($"[+] searching users by userId: ${userId}");
-		var user = OnTrackDBContext.ctx.Users.First(u => u.Id == userId);
+		var user = onTrackDBContext.Users.First(u => u.Id == userId);
 		Console.WriteLine($"[+] searching user trackers by userId: ${userId}");
-		var userTracker = OnTrackDBContext.ctx.UserTrackers.First(t => t.Owner.Id == userId);
+		var userTracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
 
 		Console.WriteLine($"[+] creating the new campaign: ${campaign.CampaignName}");
 		var newCampaign = new TrackingCampaign();
@@ -118,8 +119,8 @@ public class Mutation {
 		newCampaign.LandingPageURL = campaign.LandingPageURL ?? newCampaign.LandingPageURL;
 		newCampaign.PrivacyPageURL = campaign.PrivacyPageURL ?? newCampaign.PrivacyPageURL;
 
-		OnTrackDBContext.ctx.TrackingCampaigns.Add(newCampaign);
-		OnTrackDBContext.ctx.SaveChanges();
+		onTrackDBContext.TrackingCampaigns.Add(newCampaign);
+		onTrackDBContext.SaveChanges();
 
 		var CampaignTypeProperty = new TrackingCampaignExtraProperty {
 			Id = Guid.NewGuid(),
@@ -134,9 +135,9 @@ public class Mutation {
 			PropertyValue = campaign.PrimaryCampaignObjective ?? "Sales",
 		};
 
-		OnTrackDBContext.ctx.TrackingCampaignExtraProperties.Add(CampaignTypeProperty);
-		OnTrackDBContext.ctx.TrackingCampaignExtraProperties.Add(PrimaryCampaignObjectiveProperty);
-		OnTrackDBContext.ctx.SaveChanges();
+		onTrackDBContext.TrackingCampaignExtraProperties.Add(CampaignTypeProperty);
+		onTrackDBContext.TrackingCampaignExtraProperties.Add(PrimaryCampaignObjectiveProperty);
+		onTrackDBContext.SaveChanges();
 
 		return newCampaign.Id;
 	}
@@ -151,7 +152,7 @@ public class Mutation {
 	// 		throw new Exception("id claim missing");
 
 	// 	var campaignGuid = Guid.Parse(campaignId);
-	// 	var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId).FirstOrDefault();
+	// 	var existingCampaign = OnTrackDBContext.TrackingCampaigns.Where(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId).FirstOrDefault();
 	// 	if (existingCampaign == null)
 	// 		throw new Exception("campaign not found!");
 
@@ -163,7 +164,7 @@ public class Mutation {
 	// 	existingCampaign.CartPageURL = campaign.CartPageURL ?? existingCampaign.CartPageURL;
 	// 	existingCampaign.LandingPageURL = campaign.LandingPageURL ?? existingCampaign.LandingPageURL;
 	// 	existingCampaign.PrivacyPageURL = campaign.PrivacyPageURL ?? existingCampaign.PrivacyPageURL;
-	// 	OnTrackDBContext.ctx.SaveChanges();
+	// 	OnTrackDBContext.SaveChanges();
 
 	// 	// Console.WriteLine("got id: " + id);
 	// 	// campaign.Id = Guid.NewGuid();
@@ -173,9 +174,9 @@ public class Mutation {
 
 	// 	// Console.WriteLine("got campaign: " + campaign.ToString());
 	// 	// try {
-	// 	// 	OnTrackDBContext.ctx.TrackingCampaigns.Add(campaign);
+	// 	// 	OnTrackDBContext.TrackingCampaigns.Add(campaign);
 	// 	// 	Console.WriteLine("added campaign: " + campaign.ToString());
-	// 	// 	OnTrackDBContext.ctx.SaveChanges();
+	// 	// 	OnTrackDBContext.SaveChanges();
 	// 	// } catch (Exception e) {
 	// 	// 	Console.WriteLine("exception: " + e.ToString());
 	// 	// }

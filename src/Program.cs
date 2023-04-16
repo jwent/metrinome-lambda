@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 
 
 
@@ -45,7 +46,7 @@ builder.Services
 			ValidIssuer = "issuer",
 			RequireSignedTokens = false,
 			IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY")))
-		};
+        };
 
 		options.RequireHttpsMetadata = false;
 		options.SaveToken = true;
@@ -67,6 +68,8 @@ AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 AppContext.SetSwitch("Npgsql.DisableDateTimeInfinityConversions", true);
 
 // builder.Services.AddErrorInfoProvider(opt => opt.ExposeExceptionStackTrace = true);
+builder.Services.AddDbContext<OnTrackDBContext>(options =>
+    options.UseNpgsql(Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING")));
 
 builder.Services
 	.AddGraphQL(b => b

@@ -4,12 +4,9 @@ using GraphQL.Authorization;
 
 
 public class OnTrackDBContext : DbContext {
-	private static OnTrackDBContext? _ctx = null;
-	public static OnTrackDBContext ctx {
-		get => (_ctx = _ctx ?? new OnTrackDBContext());
-		set => _ctx = value;
-	}
-
+	public OnTrackDBContext(DbContextOptions options) : base(options)
+    {
+    }
 	public DbSet<User> Users { get; set; } = null!;
 	public DbSet<UserExtraProperty> UserExtraProperties { get; set; } = null!;
 	public DbSet<UserTracker> UserTrackers { get; set; } = null!;

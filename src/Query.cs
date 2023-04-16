@@ -6,14 +6,14 @@ public class Query
 {
     public static string hello() => "hello world!";
     // [Authorize(Policy = "CustomerPolicy")]
-    // public static List<User> users() => OnTrackDBContext.ctx.Users.ToList();
+    // public static List<User> users() => onTrackDBContext.Users.ToList();
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static UserData getUserData(IResolveFieldContext context) {
+    public static UserData getUserData(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = Util.GetCurrentUserId(context);
-        var userdata = OnTrackDBContext.ctx.Users
+        var userdata = onTrackDBContext.Users
             .Where(u => u.Id == userId)
-            .Join(OnTrackDBContext.ctx.UserExtraProperties,
+            .Join(onTrackDBContext.UserExtraProperties,
                 user => new { user.Id, PropertyKey = "FullName" },
                 extra => new { extra.Parent.Id, extra.PropertyKey },
                 (user, extraFullName) => new { user, extraFullName }
@@ -26,10 +26,10 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static string? trackerCode(IResolveFieldContext context) {
+    public static string? trackerCode(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = Util.GetCurrentUserId(context);
 
-        var user_tracker = OnTrackDBContext.ctx.UserTrackers.First(t => t.Owner.Id == userId);
+        var user_tracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
 
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
         return Util.CompressJavascriptStub(@"<script type=""text/javascript"">
@@ -73,12 +73,12 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId) {
+    public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId, [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = Util.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-        var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.FirstOrDefault(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId, null);
+        var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId, null);
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
@@ -86,10 +86,10 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Campaigns myCampaigns(IResolveFieldContext context, DateTime? createdAt) {
+    public static Campaigns myCampaigns(IResolveFieldContext context, DateTime? createdAt, [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = Util.GetCurrentUserId(context);
 
-        var campaigns = OnTrackDBContext.ctx.TrackingCampaigns.Where(e => e.ParentTracker.Owner.Id == userId).OrderByDescending(c => c.CreatedAt);
+        var campaigns = onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Owner.Id == userId).OrderByDescending(c => c.CreatedAt);
         int count = campaigns.Count();
         List<TrackingCampaign> campaignList;
         if (createdAt.HasValue)
@@ -101,38 +101,38 @@ public class Query
             campaignList = campaigns.Take(10).ToList();
         }
         var campaign_datas = campaignList.Select(e => new TrackingCampaignData(e,
-                OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == e.Id).Count(),
-                OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
-                OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.IsBotClick == true).Count(),
-                OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.Conversion == true).Count(),
-                OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.Conversion == true && c.IsDesktop == true).Count()))
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.IsBotClick == true).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.Conversion == true).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.Conversion == true && c.IsDesktop == true).Count()))
         .ToList();
         return new Campaigns(campaign_datas, count);
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Clicks myCampaignClicks(IResolveFieldContext context, string campaignId, DateTime? createdAt) {
+    public static Clicks myCampaignClicks(IResolveFieldContext context, string campaignId, DateTime? createdAt, [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = Util.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-        var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId);
+        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId);
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
-        var myClicks = OnTrackDBContext.ctx.TrackerClicks
+        var myClicks = onTrackDBContext.TrackerClicks
                 .Where(e => e.Campaign.Id == campaignGuid)
-                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                .Join(onTrackDBContext.TrackerClickExtraProperties,
                     click => new { click.Id, PropertyKey = "ip_country" },
                     extra => new { extra.ClickParent.Id, extra.PropertyKey },
                     (click, extraCountry) => new { click, extraCountry }
                 )
-                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                .Join(onTrackDBContext.TrackerClickExtraProperties,
                     combined => new { combined.click.Id, PropertyKey = "ip_region" },
                     extra => new { extra.ClickParent.Id, extra.PropertyKey },
                     (combined, extraRegion) => new { combined.click, combined.extraCountry, extraRegion }
                 )
-                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                .Join(onTrackDBContext.TrackerClickExtraProperties,
                     combined => new { combined.click.Id, PropertyKey = "ip_city" },
                     extra => new { extra.ClickParent.Id, extra.PropertyKey },
                     (combined, extraCity) => new { combined.click, combined.extraCountry, combined.extraRegion, extraCity }
@@ -160,35 +160,35 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, string campaignId) {
+    public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, string campaignId, [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = Util.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-        var existingCampaign = OnTrackDBContext.ctx.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId);
+        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId);
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
         var campaignData = new TrackingCampaignData(existingCampaign,
-                    OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id).Count(),
-                    OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
-                    OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.IsBotClick == true).Count(),
-                    OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true).Count(),
-                    OnTrackDBContext.ctx.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true && c.IsDesktop == true).Count());
+                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id).Count(),
+                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
+                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.IsBotClick == true).Count(),
+                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true).Count(),
+                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true && c.IsDesktop == true).Count());
 
-        var myClicks = OnTrackDBContext.ctx.TrackerClicks
+        var myClicks = onTrackDBContext.TrackerClicks
                 .Where(e => e.Campaign.Id == campaignGuid)
-                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                .Join(onTrackDBContext.TrackerClickExtraProperties,
                     click => new { click.Id, PropertyKey = "ip_country" },
                     extra => new { extra.ClickParent.Id, extra.PropertyKey },
                     (click, extraCountry) => new { click, extraCountry }
                 )
-                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                .Join(onTrackDBContext.TrackerClickExtraProperties,
                     combined => new { combined.click.Id, PropertyKey = "ip_region" },
                     extra => new { extra.ClickParent.Id, extra.PropertyKey },
                     (combined, extraRegion) => new { combined.click, combined.extraCountry, extraRegion }
                 )
-                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                .Join(onTrackDBContext.TrackerClickExtraProperties,
                     combined => new { combined.click.Id, PropertyKey = "ip_city" },
                     extra => new { extra.ClickParent.Id, extra.PropertyKey },
                     (combined, extraCity) => new { combined.click, combined.extraCountry, combined.extraRegion, extraCity }
@@ -202,19 +202,19 @@ public class Query
                 .ToList();
 
 
-        var myConversions = OnTrackDBContext.ctx.TrackerClicks
+        var myConversions = onTrackDBContext.TrackerClicks
                 .Where(e => e.Campaign.Id == campaignGuid && e.Conversion.Value)
-                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                .Join(onTrackDBContext.TrackerClickExtraProperties,
                     click => new { click.Id, PropertyKey = "ip_country" },
                     extra => new { extra.ClickParent.Id, extra.PropertyKey },
                     (click, extraCountry) => new { click, extraCountry }
                 )
-                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                .Join(onTrackDBContext.TrackerClickExtraProperties,
                     combined => new { combined.click.Id, PropertyKey = "ip_region" },
                     extra => new { extra.ClickParent.Id, extra.PropertyKey },
                     (combined, extraRegion) => new { combined.click, combined.extraCountry, extraRegion }
                 )
-                .Join(OnTrackDBContext.ctx.TrackerClickExtraProperties,
+                .Join(onTrackDBContext.TrackerClickExtraProperties,
                     combined => new { combined.click.Id, PropertyKey = "ip_city" },
                     extra => new { extra.ClickParent.Id, extra.PropertyKey },
                     (combined, extraCity) => new { combined.click, combined.extraCountry, combined.extraRegion, extraCity }
@@ -227,12 +227,12 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static GetCampaignStatsResponse myCampaignClickStats(IResolveFieldContext context, string campaignId, string? groupby="day") {
+    public static GetCampaignStatsResponse myCampaignClickStats(IResolveFieldContext context, string campaignId, string? groupby="day", [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = Util.GetCurrentUserId(context);
         var campaign = Util.GetCampaignById(userId, Guid.Parse(campaignId));
 
         // get the clicks by campaign
-        var clicksQuery = OnTrackDBContext.ctx.TrackerClicks
+        var clicksQuery = onTrackDBContext.TrackerClicks
                 .Where(e => e.Campaign.Id == campaign.Id);
         // groupby sub-query based on which group we need
         var subQuery =
@@ -252,12 +252,12 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static GetCampaignStatsResponse myCampaignConversionStats(IResolveFieldContext context, string campaignId, string? groupby="day") {
+    public static GetCampaignStatsResponse myCampaignConversionStats(IResolveFieldContext context, string campaignId, string? groupby="day", [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = Util.GetCurrentUserId(context);
         var campaign = Util.GetCampaignById(userId, Guid.Parse(campaignId));
 
         // get the clicks by campaign
-        var conversionsQuery = OnTrackDBContext.ctx.TrackerClicks
+        var conversionsQuery = onTrackDBContext.TrackerClicks
                 .Where(e => e.Campaign.Id == campaign.Id && e.Conversion != null);
         // groupby sub-query based on which group we need
         var subQuery =
