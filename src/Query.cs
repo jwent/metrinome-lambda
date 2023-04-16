@@ -9,7 +9,8 @@ public class Query
     // public static List<User> users() => onTrackDBContext.Users.ToList();
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static UserData getUserData(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
+    public static UserData getUserData(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext)
+    {
         var userId = Util.GetCurrentUserId(context);
         var userdata = onTrackDBContext.Users
             .Where(u => u.Id == userId)
@@ -18,7 +19,8 @@ public class Query
                 extra => new { extra.Parent.Id, extra.PropertyKey },
                 (user, extraFullName) => new { user, extraFullName }
             ).First();
-        return new UserData {
+        return new UserData
+        {
             Email = userdata.user.Email,
             CreatedAt = userdata.user.CreatedAt,
             FullName = userdata.extraFullName.PropertyValue,
@@ -26,7 +28,8 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static string? trackerCode(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
+    public static string? trackerCode(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext)
+    {
         var userId = Util.GetCurrentUserId(context);
 
         var user_tracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
@@ -50,9 +53,11 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static PostbackCodes postbackCode(IResolveFieldContext context) {
+    public static PostbackCodes postbackCode(IResolveFieldContext context)
+    {
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
-        return new PostbackCodes {
+        return new PostbackCodes
+        {
             PagePostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
     (function(){
         if(sessionStorage.getItem('clid')){
@@ -73,7 +78,8 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId, [FromServices] OnTrackDBContext onTrackDBContext) {
+    public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId, [FromServices] OnTrackDBContext onTrackDBContext)
+    {
         var userId = Util.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
@@ -86,7 +92,8 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Campaigns myCampaigns(IResolveFieldContext context, DateTime? createdAt, [FromServices] OnTrackDBContext onTrackDBContext) {
+    public static Campaigns myCampaigns(IResolveFieldContext context, DateTime? createdAt, [FromServices] OnTrackDBContext onTrackDBContext)
+    {
         var userId = Util.GetCurrentUserId(context);
 
         var campaigns = onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Owner.Id == userId).OrderByDescending(c => c.CreatedAt);
@@ -111,7 +118,8 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Clicks myCampaignClicks(IResolveFieldContext context, string campaignId, DateTime? createdAt, [FromServices] OnTrackDBContext onTrackDBContext) {
+    public static Clicks myCampaignClicks(IResolveFieldContext context, string campaignId, DateTime? createdAt, [FromServices] OnTrackDBContext onTrackDBContext)
+    {
         var userId = Util.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
@@ -160,7 +168,8 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, string campaignId, [FromServices] OnTrackDBContext onTrackDBContext) {
+    public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, string campaignId, [FromServices] OnTrackDBContext onTrackDBContext)
+    {
         var userId = Util.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
@@ -227,52 +236,57 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static GetCampaignStatsResponse myCampaignClickStats(IResolveFieldContext context, string campaignId, string? groupby="day", [FromServices] OnTrackDBContext onTrackDBContext) {
+    public static GetCampaignClickStatsResponse myCampaignClickStats(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, string? groupby = "day")
+    {
         var userId = Util.GetCurrentUserId(context);
-        var campaign = Util.GetCampaignById(userId, Guid.Parse(campaignId));
+        var campaign = Util.GetCampaignById(onTrackDBContext, userId, Guid.Parse(campaignId));
 
         // get the clicks by campaign
         var clicksQuery = onTrackDBContext.TrackerClicks
                 .Where(e => e.Campaign.Id == campaign.Id);
         // groupby sub-query based on which group we need
         var subQuery =
-                groupby == "day" ? clicksQuery.GroupBy(f => f.CreatedAt.Date.ToString()) :
-                groupby == "hour" ? clicksQuery.GroupBy(f => f.CreatedAt.Date.ToString() + " " + f.CreatedAt.Hour) :
+                groupby == "day" ? clicksQuery.GroupBy(f => new { Date = f.CreatedAt.Date, Hour = 0 }) :
+                groupby == "hour" ? clicksQuery.Where(t => t.CreatedAt > DateTime.Now.AddHours(-24)).GroupBy(f => new { Date = f.CreatedAt.Date, Hour = f.CreatedAt.Hour }) :
                 throw new Exception("invalid groupby");
 
         // select the results
         var stats = subQuery
-                .Select(g => new { datetime=g.Key, count=g.Count() })
+                .Select(g => new { datetime = groupby == "day" ? g.Key.Date.ToString() : g.Key.Date.AddHours(g.Key.Hour).ToString(), count = g.Count() })
                 .ToList();
         // return formatted object
-        return new GetCampaignStatsResponse {
-            GroupedBy=groupby,
-            Stats=stats.Select(s => new CampaignStatPoint { Position=s.datetime, Count=s.count }).ToList(),
+        return new GetCampaignClickStatsResponse
+        {
+            GroupedBy = groupby,
+            Stats = stats.Select(s => new CampaignClickStatPoint { Position = s.datetime, ClickCount = s.count }).ToList(),
         };
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static GetCampaignStatsResponse myCampaignConversionStats(IResolveFieldContext context, string campaignId, string? groupby="day", [FromServices] OnTrackDBContext onTrackDBContext) {
+    public static GetCampaignConversionStatsResponse myCampaignConversionStats(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, string? groupby = "day")
+    {
         var userId = Util.GetCurrentUserId(context);
-        var campaign = Util.GetCampaignById(userId, Guid.Parse(campaignId));
+        var campaign = Util.GetCampaignById(onTrackDBContext, userId, Guid.Parse(campaignId));
 
         // get the clicks by campaign
         var conversionsQuery = onTrackDBContext.TrackerClicks
                 .Where(e => e.Campaign.Id == campaign.Id && e.Conversion != null);
+
         // groupby sub-query based on which group we need
         var subQuery =
-                groupby == "day" ? conversionsQuery.GroupBy(f => f.ConversionDate.Value.Date.ToString()) :
-                groupby == "hour" ? conversionsQuery.GroupBy(f => f.ConversionDate.Value.Date.ToString() + " " + f.ConversionDate.Value.Hour) :
+                groupby == "day" ? conversionsQuery.GroupBy(f => new { Date = f.ConversionDate.Value.Date, Hour = 0 }) :
+                groupby == "hour" ? conversionsQuery.Where(t => t.ConversionDate.Value > DateTime.Now.AddHours(-24)).GroupBy(f => new { Date = f.ConversionDate.Value.Date, Hour = f.ConversionDate.Value.Hour }) :
                 throw new Exception("invalid groupby");
 
         // select the results
         var stats = subQuery
-                .Select(g => new { datetime=g.Key, count=g.Count() })
+                .Select(g => new { datetime = groupby == "day" ? g.Key.Date.ToString() : g.Key.Date.AddHours(g.Key.Hour).ToString(), count = g.Count() })
                 .ToList();
         // return formatted object
-        return new GetCampaignStatsResponse {
-            GroupedBy=groupby,
-            Stats=stats.Select(s => new CampaignStatPoint { Position=s.datetime, Count=s.count }).ToList(),
+        return new GetCampaignConversionStatsResponse
+        {
+            GroupedBy = groupby,
+            Stats = stats.Select(s => new CampaignConversionStatPoint { Position = s.datetime, ConversionCount = s.count }).ToList(),
         };
     }
 }

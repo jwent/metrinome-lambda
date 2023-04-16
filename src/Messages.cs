@@ -152,15 +152,24 @@ public class ChartDatas
 	public List<Location> TopLocations { get; set; }
 }
 
-public class GetCampaignStatsResponse {
+public class GetCampaignClickStatsResponse {
 	public string? GroupedBy { get; set; }
-	public List<CampaignStatPoint>? Stats { get; set; }
+	public List<CampaignClickStatPoint>? Stats { get; set; }
 }
-public class CampaignStatPoint {
+public class CampaignClickStatPoint {
 	public string Position { get; set; }
-	public int Count { get; set; }
+	public int ClickCount { get; set; }
 }
-
+public class GetCampaignConversionStatsResponse
+{
+    public string? GroupedBy { get; set; }
+    public List<CampaignConversionStatPoint>? Stats { get; set; }
+}
+public class CampaignConversionStatPoint
+{
+    public string Position { get; set; }
+    public int ConversionCount { get; set; }
+}
 public class AddUserResponse {
 	public Guid? Id { get; set; }
 	public string? Error { get; set; }
