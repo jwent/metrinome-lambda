@@ -92,21 +92,23 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Campaigns myCampaigns(IResolveFieldContext context, DateTime? createdAt, [FromServices] OnTrackDBContext onTrackDBContext)
+    public static Campaigns myCampaigns(IResolveFieldContext context, DateTime? createdAt, int length, [FromServices] OnTrackDBContext onTrackDBContext)
     {
         var userId = Util.GetCurrentUserId(context);
 
-        var campaigns = onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Owner.Id == userId).OrderByDescending(c => c.CreatedAt);
+        IOrderedQueryable<TrackingCampaign> campaigns = (IOrderedQueryable<TrackingCampaign>)onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Owner.Id == userId);
         int count = campaigns.Count();
         List<TrackingCampaign> campaignList;
         if (createdAt.HasValue)
-        {
-            campaignList = campaigns.Where(e => e.CreatedAt < createdAt).Take(10).ToList();
-        }
+            campaigns = campaigns.Where(e => e.CreatedAt < createdAt).OrderByDescending(c => c.CreatedAt);
         else
-        {
-            campaignList = campaigns.Take(10).ToList();
-        }
+            campaigns = campaigns.OrderByDescending(c => c.CreatedAt);
+            
+        if (length > 0)
+            campaignList = campaigns.Take(length).ToList();
+        else
+            campaignList = campaigns.ToList();
+
         var campaign_datas = campaignList.Select(e => new TrackingCampaignData(e,
                 onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id).Count(),
                 onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
