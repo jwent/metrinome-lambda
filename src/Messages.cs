@@ -192,7 +192,7 @@ public class TrackerInsightsResponse {
 	public List<StatPoint>? StatLists { get; set; }
 }
 public class StatPoint {
-	public string Position { get; set; }
+	public string? Position { get; set; }
 	public int Count { get; set; }
 }
 

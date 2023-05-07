@@ -299,29 +299,63 @@ public class Query
             string propertytype,
             string groupby) {
 
+        // get user properties for reference
         var userId = Util.GetCurrentUserId(context);
         var userTracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
 
+        // select where we want to get stuff from
         var query =
                 propertytype == "click" ? onTrackDBContext.TrackerClicks.Where(c => c.ParentTracker.Id == userTracker.Id) :
                 propertytype == "conversion" ? onTrackDBContext.TrackerClicks.Where(c => c.ParentTracker.Id == userTracker.Id && c.Conversion != null) :
                 throw new Exception("invalid propertytype argument:" + propertytype);
 
+        // group our stuff by the group value
         var groupedQuery =
                 groupby == "city" ? query
                     .Join(onTrackDBContext.TrackerClickExtraProperties,
                         click => new { click.Id, PropertyKey = "ip_city" },
                         extra => new { extra.ClickParent.Id, extra.PropertyKey },
                         (click, extraCity) => new { click, extraCity }
-                    ).GroupBy(c => c.extraCity.PropertyValue) :
+                    ).GroupBy(c => c.extraCity.PropertyValue)
+                    .Select(g => new StatPoint { Position = g.Key, Count = g.Count() }) :
+                groupby == "referer" ? query
+                    .GroupBy(c => c.Referer)
+                    .Select(g => new StatPoint { Position = g.Key, Count = g.Count() }) :
+                groupby == "device" ? query
+                    .GroupBy(c => c.Useragent)
+                    .Select(g => new StatPoint { Position = g.Key, Count = g.Count() }) :
+                groupby == "ad_type" ? query
+                    .Join(onTrackDBContext.TrackingCampaignExtraProperties,
+                        click => new { click.Campaign.Id, PropertyKey = "CampaignType" },
+                        extra => new { extra.Parent.Id, extra.PropertyKey },
+                        (click, extraCampaignType) => new { click, extraCampaignType }
+                    ).GroupBy(c => c.extraCampaignType.PropertyValue)
+                    .Select(g => new StatPoint { Position = g.Key, Count = g.Count() }) :
+                groupby == "platform" ? query
+                    .GroupBy(c => c.Campaign.Platform)
+                    .Select(g => new StatPoint { Position = g.Key, Count = g.Count() }) :
+                // since clicks and conversions have different date properties, we have to get more specific
+                groupby == "day_of_the_week" && propertytype == "click" ? query
+                    .GroupBy(c => c.CreatedAt.DayOfWeek)
+                    .Select(g => new StatPoint { Position = g.Key.ToString(), Count = g.Count() }) :
+                groupby == "day_of_the_week" && propertytype == "conversion" ? query
+                    .GroupBy(c => ((DateTime)c.ConversionDate).DayOfWeek)
+                    .Select(g => new StatPoint { Position = g.Key.ToString(), Count = g.Count() }) :
+                groupby == "hour_of_the_day" && propertytype == "click" ? query
+                    .GroupBy(c => c.CreatedAt.Hour)
+                    .Select(g => new StatPoint { Position = g.Key.ToString(), Count = g.Count() }) :
+                groupby == "hour_of_the_day" && propertytype == "conversion" ? query
+                    .GroupBy(c => ((DateTime)c.ConversionDate).Hour)
+                    .Select(g => new StatPoint { Position = g.Key.ToString(), Count = g.Count() }) :
                 throw new Exception("invalid groupby argument:" + groupby);
 
+        // sort, take, and execute the query
         var results = groupedQuery
-            .Select(g => new StatPoint { Position = g.Key, Count = g.Count() })
             .OrderByDescending(s => s.Count)
             .Take(50)
             .ToList();
 
+        // return the values with some context
         return new TrackerInsightsResponse {
             PropertyType=propertytype,
             GroupedBy=groupby,
