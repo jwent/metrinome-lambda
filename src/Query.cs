@@ -78,7 +78,7 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static TrackingCampaign getCampaign(IResolveFieldContext context, string campaignId, [FromServices] OnTrackDBContext onTrackDBContext)
+    public static TrackingCampaign getCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId)
     {
         var userId = Util.GetCurrentUserId(context);
 
@@ -92,7 +92,7 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Campaigns myCampaigns(IResolveFieldContext context, DateTime? createdAt, int length, [FromServices] OnTrackDBContext onTrackDBContext)
+    public static Campaigns myCampaigns(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, DateTime? createdAt, int length=10)
     {
         var userId = Util.GetCurrentUserId(context);
 
@@ -120,7 +120,7 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Clicks myCampaignClicks(IResolveFieldContext context, string campaignId, DateTime? createdAt, [FromServices] OnTrackDBContext onTrackDBContext)
+    public static Clicks myCampaignClicks(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, DateTime? createdAt)
     {
         var userId = Util.GetCurrentUserId(context);
 
@@ -170,7 +170,7 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, string campaignId, [FromServices] OnTrackDBContext onTrackDBContext)
+    public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId)
     {
         var userId = Util.GetCurrentUserId(context);
 
