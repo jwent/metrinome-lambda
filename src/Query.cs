@@ -362,4 +362,43 @@ public class Query
             StatLists=results,
         };
     }
+
+    [Authorize(Policy = "CustomerPolicy")]
+    public static TrackerInsightsResponse trackerCampaignInsights(
+            IResolveFieldContext context,
+            [FromServices] OnTrackDBContext onTrackDBContext,
+            string propertytype,
+            string groupby) {
+
+        // get user properties for reference
+        var userId = Util.GetCurrentUserId(context);
+        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
+
+        // select where we want to get stuff from
+        var query =
+                propertytype == "roi" ? onTrackDBContext.TrackerClicks
+                    .Where(c => c.ParentTracker.Id == userTracker.Id && c.Conversion != null)
+                    .GroupBy(c => c.Campaign.Id)
+                    .Select(g => new { Campaign=onTrackDBContext.TrackingCampaigns.First(t => t.Id == g.Key), Count=g.Count() })
+                    .ToList() :
+                throw new Exception("invalid propertytype argument:" + propertytype);
+
+        // group our stuff by the group value
+        var results =
+                groupby == "roi" ? query
+                    .Select(g => new StatPoint { Position=g.Campaign.CampaignName, Count=(int)(g.Count * float.Parse(g.Campaign.ConversionValue)) } )
+                    .ToList() :
+                groupby == "ad_type" ? query
+                    .GroupBy(c => onTrackDBContext.TrackingCampaignExtraProperties.First(p => p.Parent == c.Campaign && p.PropertyKey == "CampaignType").PropertyValue)
+                    .Select(g2 => new StatPoint { Position=g2.Key, Count=g2.ToList().Sum(g => (int)(g.Count * float.Parse(g.Campaign.ConversionValue))) } )
+                    .ToList() :
+                throw new Exception("invalid groupby argument:" + groupby);
+
+        // return the values with some context
+        return new TrackerInsightsResponse {
+            PropertyType=propertytype,
+            GroupedBy=groupby,
+            StatLists=results,
+        };
+    }
 }
