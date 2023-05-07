@@ -186,4 +186,14 @@ public class LoginUserResponse {
 	public string? Error { get; set; }
 }
 
+public class TrackerInsightsResponse {
+	public string? PropertyType { get; set; }
+	public string? GroupedBy { get; set; }
+	public List<StatPoint>? StatLists { get; set; }
+}
+public class StatPoint {
+	public string Position { get; set; }
+	public int Count { get; set; }
+}
+
 

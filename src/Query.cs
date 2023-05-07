@@ -32,7 +32,7 @@ public class Query
     {
         var userId = Util.GetCurrentUserId(context);
 
-        var user_tracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
+        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
 
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
         return Util.CompressJavascriptStub(@"<script type=""text/javascript"">
@@ -43,7 +43,7 @@ public class Query
             const rpu = window.btoa(window.location.href);
             const rpr = window.btoa(document.referrer);
             (function(){
-                fetch('" + endpoint + "?t=" + user_tracker.Id.ToString() + @"&r='+rpr+'&u='+rpu)
+                fetch('" + endpoint + "?t=" + userTracker.Id.ToString() + @"&r='+rpr+'&u='+rpu)
                     .then(r => r.json())
                     .then(d => sessionStorage.setItem('clid',d.clid))
                 })();
@@ -289,6 +289,43 @@ public class Query
         {
             GroupedBy = groupby,
             Stats = stats.Select(s => new CampaignConversionStatPoint { Position = s.datetime, ConversionCount = s.count }).ToList(),
+        };
+    }
+
+    [Authorize(Policy = "CustomerPolicy")]
+    public static TrackerInsightsResponse trackerClickInsights(
+            IResolveFieldContext context,
+            [FromServices] OnTrackDBContext onTrackDBContext,
+            string propertytype,
+            string groupby) {
+
+        var userId = Util.GetCurrentUserId(context);
+        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
+
+        var query =
+                propertytype == "click" ? onTrackDBContext.TrackerClicks.Where(c => c.ParentTracker.Id == userTracker.Id) :
+                propertytype == "conversion" ? onTrackDBContext.TrackerClicks.Where(c => c.ParentTracker.Id == userTracker.Id && c.Conversion != null) :
+                throw new Exception("invalid propertytype argument:" + propertytype);
+
+        var groupedQuery =
+                groupby == "city" ? query
+                    .Join(onTrackDBContext.TrackerClickExtraProperties,
+                        click => new { click.Id, PropertyKey = "ip_city" },
+                        extra => new { extra.ClickParent.Id, extra.PropertyKey },
+                        (click, extraCity) => new { click, extraCity }
+                    ).GroupBy(c => c.extraCity.PropertyValue) :
+                throw new Exception("invalid groupby argument:" + groupby);
+
+        var results = groupedQuery
+            .Select(g => new StatPoint { Position = g.Key, Count = g.Count() })
+            .OrderByDescending(s => s.Count)
+            .Take(50)
+            .ToList();
+
+        return new TrackerInsightsResponse {
+            PropertyType=propertytype,
+            GroupedBy=groupby,
+            StatLists=results,
         };
     }
 }
