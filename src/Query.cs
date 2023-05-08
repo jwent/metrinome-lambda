@@ -359,7 +359,7 @@ public class Query
         return new TrackerInsightsResponse {
             PropertyType=propertytype,
             GroupedBy=groupby,
-            StatLists=results,
+            Stats=results,
         };
     }
 
@@ -398,7 +398,7 @@ public class Query
         return new TrackerInsightsResponse {
             PropertyType=propertytype,
             GroupedBy=groupby,
-            StatLists=results,
+            Stats=results,
         };
     }
 }

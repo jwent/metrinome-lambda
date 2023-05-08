@@ -189,7 +189,7 @@ public class LoginUserResponse {
 public class TrackerInsightsResponse {
 	public string? PropertyType { get; set; }
 	public string? GroupedBy { get; set; }
-	public List<StatPoint>? StatLists { get; set; }
+	public List<StatPoint>? Stats { get; set; }
 }
 public class StatPoint {
 	public string? Position { get; set; }
