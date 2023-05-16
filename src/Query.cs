@@ -311,6 +311,20 @@ public class Query
 
         // group our stuff by the group value
         var groupedQuery =
+                groupby == "country" ? query
+                    .Join(onTrackDBContext.TrackerClickExtraProperties,
+                        click => new { click.Id, PropertyKey = "ip_country" },
+                        extra => new { extra.ClickParent.Id, extra.PropertyKey },
+                        (click, extraCountry) => new { click, extraCountry }
+                    ).GroupBy(c => c.extraCountry.PropertyValue)
+                    .Select(g => new StatPoint { Position = g.Key, Count = g.Count() }) :
+                groupby == "region" ? query
+                    .Join(onTrackDBContext.TrackerClickExtraProperties,
+                        click => new { click.Id, PropertyKey = "ip_region" },
+                        extra => new { extra.ClickParent.Id, extra.PropertyKey },
+                        (click, extraRegion) => new { click, extraRegion }
+                    ).GroupBy(c => c.extraRegion.PropertyValue)
+                    .Select(g => new StatPoint { Position = g.Key, Count = g.Count() }) :
                 groupby == "city" ? query
                     .Join(onTrackDBContext.TrackerClickExtraProperties,
                         click => new { click.Id, PropertyKey = "ip_city" },
