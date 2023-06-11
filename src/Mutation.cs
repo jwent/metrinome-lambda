@@ -64,19 +64,21 @@ public class Mutation {
 		// salt and hash the new password
 		var passwordHash = Util.SaltAndHash(password);
 
-		var user = new User { Id=Guid.NewGuid(), Email=email, Password=passwordHash, CreatedAt=DateTime.Now };
+		// create both the user and their organization
+		var user = new User { Id=Guid.NewGuid(), Email=email, Password=passwordHash, CreatedAt=DateTime.Now, UserOrganizationalRole="Owner" };
 		var organization = new UserOrganization { Id=Guid.NewGuid(), OwnerId=user.Id, CreatedAt=DateTime.Now };
 		user.Organization = organization;
 
 		try {
 			// add the new user
 			onTrackDBContext.Users.Add(user);
+			// add the new organization
 			onTrackDBContext.UserOrganizations.Add(organization);
 			// try to commit the user
 			onTrackDBContext.SaveChanges();
 
 		} catch (Microsoft.EntityFrameworkCore.DbUpdateException e) {
-			Console.WriteLine("duplicate user key error");
+			Console.WriteLine("duplicate user key error:" + e.ToString());
 			onTrackDBContext.Users.Remove(user);
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 		}
@@ -85,6 +87,7 @@ public class Mutation {
 		var tracker = new UserTracker { Id=Guid.NewGuid(), Organization=organization, CreatedAt=DateTime.Now };
 		onTrackDBContext.UserTrackers.Add(tracker);
 
+		// add a meta property for the user's fullname
 		onTrackDBContext.UserExtraProperties.Add(new UserExtraProperty {
 			Id = Guid.NewGuid(),
 			Parent = user,
@@ -101,10 +104,8 @@ public class Mutation {
 	public static Guid? createCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, TrackingCampaignSubmission campaign) {
 		var userId = Util.GetCurrentUserId(context);
 
-		Console.WriteLine($"[+] searching users by userId: ${userId}");
-		var user = onTrackDBContext.Users.First(u => u.Id == userId);
 		Console.WriteLine($"[+] searching user trackers by userId: ${userId}");
-		var userTracker = onTrackDBContext.UserTrackers.First(t => t.Organization.OwnerId == userId);
+		var userTracker = Util.GetUserTrackerByUser(onTrackDBContext, userId);
 
 		Console.WriteLine($"[+] creating the new campaign: ${campaign.CampaignName}");
 		var newCampaign = new TrackingCampaign();

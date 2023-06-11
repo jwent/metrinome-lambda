@@ -9,35 +9,36 @@ using System.ComponentModel.DataAnnotations.Schema;
 public class User {
 	public Guid Id { get; set; }
 	public UserOrganization Organization { get; set; }
-	public string? Email { get; set; }
-	public string? Password { get; set; }
-	public DateTime? CreatedAt { get; set; }
+	public string UserOrganizationalRole { get; set; }
+	public string Email { get; set; }
+	public string Password { get; set; }
+	public DateTime CreatedAt { get; set; }
 }
 
 public class UserExtraProperty {
-	public Guid? Id { get; set; }
-	public User? Parent { get; set; }
-	public string? PropertyKey { get; set; }
-	public string? PropertyValue { get; set; }
+	public Guid Id { get; set; }
+	public User Parent { get; set; }
+	public string PropertyKey { get; set; }
+	public string PropertyValue { get; set; }
 }
 
 public class UserOrganization {
 	public Guid Id { get; set; }
 	public Guid OwnerId { get; set; }
-	public DateTime? CreatedAt { get; set; }
+	public DateTime CreatedAt { get; set; }
 }
 
 public class UserTracker {
 	public Guid Id { get; set; }
 	public UserOrganization Organization { get; set; }
-	public DateTime? CreatedAt { get; set; }
+	public DateTime CreatedAt { get; set; }
 }
 
 public class TrackingCampaign {
 	public Guid Id { get; set; }
-	public UserTracker? ParentTracker { get; set; }
+	public UserTracker ParentTracker { get; set; }
 
-	public DateTime? CreatedAt { get; set; }
+	public DateTime CreatedAt { get; set; }
 	public int? Audience { get; set; }
 
 	public string? Platform { get; set; }
@@ -53,9 +54,9 @@ public class TrackingCampaign {
 
 public class TrackingCampaignExtraProperty {
 	public Guid Id { get; set; }
-	public TrackingCampaign? Parent { get; set; }
-	public string? PropertyKey { get; set; }
-	public string? PropertyValue { get; set; }
+	public TrackingCampaign Parent { get; set; }
+	public string PropertyKey { get; set; }
+	public string PropertyValue { get; set; }
 }
 
 public class TrackerClick {
@@ -76,9 +77,9 @@ public class TrackerClick {
 
 public class TrackerClickExtraProperty {
 	public Guid Id { get; set; }
-	public TrackerClick? ClickParent { get; set; }
-	public string? PropertyKey { get; set; }
-	public string? PropertyValue { get; set; }
+	public TrackerClick ClickParent { get; set; }
+	public string PropertyKey { get; set; }
+	public string PropertyValue { get; set; }
 }
 
 

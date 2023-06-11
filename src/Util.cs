@@ -3,6 +3,7 @@ using GraphQL;
 using GraphQL.Authorization;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
 
 public class Util {
 
@@ -72,7 +73,14 @@ public class Util {
 		Console.WriteLine($"[+] searching campaigns by campaignId: ${id}");
 		var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == id && e.ParentTracker.Organization.OwnerId == userId);
 		if (existingCampaign == null)
-		    throw new Exception("campaign not found!");
+			throw new Exception("campaign not found!");
 		return existingCampaign;
+	}
+
+	public static UserTracker GetUserTrackerByUser(OnTrackDBContext onTrackDBContext, Guid userId) {
+		var user = onTrackDBContext.Users
+			.Include(u => u.Organization)
+			.First(u => u.Id == userId);
+        return onTrackDBContext.UserTrackers.First(t => t.Organization.Id == user.Organization.Id);
 	}
 }

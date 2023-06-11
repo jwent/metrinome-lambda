@@ -32,7 +32,7 @@ public class Query
     {
         var userId = Util.GetCurrentUserId(context);
 
-        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Organization.OwnerId == userId);
+        var userTracker = Util.GetUserTrackerByUser(onTrackDBContext, userId);
 
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
         return Util.CompressJavascriptStub(@"<script type=""text/javascript"">
@@ -110,11 +110,11 @@ public class Query
             campaignList = campaigns.ToList();
 
         var campaign_datas = campaignList.Select(e => new TrackingCampaignData(e,
-                onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id).Count(),
-                onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
-                onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.IsBotClick == true).Count(),
-                onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.Conversion == true).Count(),
-                onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == e.Id && c.Conversion == true && c.IsDesktop == true).Count()))
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.Id).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.Id && c.IsBotClick == true).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.Id && c.Conversion == true).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.Id && c.Conversion == true && c.IsDesktop == true).Count()))
         .ToList();
         return new Campaigns(campaign_datas, count);
     }
@@ -188,7 +188,7 @@ public class Query
                     onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true && c.IsDesktop == true).Count());
 
         var myClicks = onTrackDBContext.TrackerClicks
-                .Where(e => e.Campaign.Id == campaignGuid)
+                .Where(e => e.Campaign != null && e.Campaign.Id == campaignGuid)
                 .Join(onTrackDBContext.TrackerClickExtraProperties,
                     click => new { click.Id, PropertyKey = "ip_country" },
                     extra => new { extra.ClickParent.Id, extra.PropertyKey },
@@ -301,7 +301,7 @@ public class Query
 
         // get user properties for reference
         var userId = Util.GetCurrentUserId(context);
-        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Organization.OwnerId == userId);
+        var userTracker = Util.GetUserTrackerByUser(onTrackDBContext, userId);
 
         // select where we want to get stuff from
         var query =
@@ -386,7 +386,7 @@ public class Query
 
         // get user properties for reference
         var userId = Util.GetCurrentUserId(context);
-        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Organization.OwnerId == userId);
+        var userTracker = Util.GetUserTrackerByUser(onTrackDBContext, userId);
 
         // select where we want to get stuff from
         var query =
