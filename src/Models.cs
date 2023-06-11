@@ -7,7 +7,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 [Index(nameof(Email), IsUnique=true)]
 public class User {
-	public Guid? Id { get; set; }
+	public Guid Id { get; set; }
+	public UserOrganization Organization { get; set; }
 	public string? Email { get; set; }
 	public string? Password { get; set; }
 	public DateTime? CreatedAt { get; set; }
@@ -20,9 +21,15 @@ public class UserExtraProperty {
 	public string? PropertyValue { get; set; }
 }
 
+public class UserOrganization {
+	public Guid Id { get; set; }
+	public Guid OwnerId { get; set; }
+	public DateTime? CreatedAt { get; set; }
+}
+
 public class UserTracker {
 	public Guid Id { get; set; }
-	public User? Owner { get; set; }
+	public UserOrganization Organization { get; set; }
 	public DateTime? CreatedAt { get; set; }
 }
 
@@ -45,14 +52,14 @@ public class TrackingCampaign {
 }
 
 public class TrackingCampaignExtraProperty {
-	public Guid? Id { get; set; }
+	public Guid Id { get; set; }
 	public TrackingCampaign? Parent { get; set; }
 	public string? PropertyKey { get; set; }
 	public string? PropertyValue { get; set; }
 }
 
 public class TrackerClick {
-	public Guid? Id { get; set; }
+	public Guid Id { get; set; }
 	public UserTracker? ParentTracker { get; set; }
 	public TrackingCampaign? Campaign { get; set; }
 	public DateTime CreatedAt { get; set; }
@@ -68,7 +75,7 @@ public class TrackerClick {
 }
 
 public class TrackerClickExtraProperty {
-	public Guid? Id { get; set; }
+	public Guid Id { get; set; }
 	public TrackerClick? ClickParent { get; set; }
 	public string? PropertyKey { get; set; }
 	public string? PropertyValue { get; set; }

@@ -70,7 +70,7 @@ public class Util {
 
 	public static TrackingCampaign GetCampaignById(OnTrackDBContext onTrackDBContext, Guid userId, Guid id) {
 		Console.WriteLine($"[+] searching campaigns by campaignId: ${id}");
-		var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == id && e.ParentTracker.Owner.Id == userId);
+		var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == id && e.ParentTracker.Organization.OwnerId == userId);
 		if (existingCampaign == null)
 		    throw new Exception("campaign not found!");
 		return existingCampaign;

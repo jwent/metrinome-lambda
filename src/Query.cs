@@ -32,7 +32,7 @@ public class Query
     {
         var userId = Util.GetCurrentUserId(context);
 
-        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
+        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Organization.OwnerId == userId);
 
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
         return Util.CompressJavascriptStub(@"<script type=""text/javascript"">
@@ -84,7 +84,7 @@ public class Query
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-        var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId, null);
+        var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == campaignGuid && e.ParentTracker.Organization.OwnerId == userId, null);
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
@@ -96,7 +96,7 @@ public class Query
     {
         var userId = Util.GetCurrentUserId(context);
 
-        IOrderedQueryable<TrackingCampaign> campaigns = (IOrderedQueryable<TrackingCampaign>)onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Owner.Id == userId);
+        IOrderedQueryable<TrackingCampaign> campaigns = (IOrderedQueryable<TrackingCampaign>)onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Organization.OwnerId == userId);
         int count = campaigns.Count();
         List<TrackingCampaign> campaignList;
         if (createdAt.HasValue)
@@ -126,7 +126,7 @@ public class Query
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId);
+        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Organization.OwnerId == userId);
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
@@ -176,7 +176,7 @@ public class Query
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId);
+        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Organization.OwnerId == userId);
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
@@ -301,7 +301,7 @@ public class Query
 
         // get user properties for reference
         var userId = Util.GetCurrentUserId(context);
-        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
+        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Organization.OwnerId == userId);
 
         // select where we want to get stuff from
         var query =
@@ -386,7 +386,7 @@ public class Query
 
         // get user properties for reference
         var userId = Util.GetCurrentUserId(context);
-        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
+        var userTracker = onTrackDBContext.UserTrackers.First(t => t.Organization.OwnerId == userId);
 
         // select where we want to get stuff from
         var query =

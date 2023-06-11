@@ -65,9 +65,13 @@ public class Mutation {
 		var passwordHash = Util.SaltAndHash(password);
 
 		var user = new User { Id=Guid.NewGuid(), Email=email, Password=passwordHash, CreatedAt=DateTime.Now };
+		var organization = new UserOrganization { Id=Guid.NewGuid(), OwnerId=user.Id, CreatedAt=DateTime.Now };
+		user.Organization = organization;
+
 		try {
 			// add the new user
 			onTrackDBContext.Users.Add(user);
+			onTrackDBContext.UserOrganizations.Add(organization);
 			// try to commit the user
 			onTrackDBContext.SaveChanges();
 
@@ -78,9 +82,8 @@ public class Mutation {
 		}
 
 		// add the user's tracker immediately
-		var tracker = new UserTracker { Id=Guid.NewGuid(), Owner=user, CreatedAt=DateTime.Now };
+		var tracker = new UserTracker { Id=Guid.NewGuid(), Organization=organization, CreatedAt=DateTime.Now };
 		onTrackDBContext.UserTrackers.Add(tracker);
-		onTrackDBContext.SaveChanges();
 
 		onTrackDBContext.UserExtraProperties.Add(new UserExtraProperty {
 			Id = Guid.NewGuid(),
@@ -101,7 +104,7 @@ public class Mutation {
 		Console.WriteLine($"[+] searching users by userId: ${userId}");
 		var user = onTrackDBContext.Users.First(u => u.Id == userId);
 		Console.WriteLine($"[+] searching user trackers by userId: ${userId}");
-		var userTracker = onTrackDBContext.UserTrackers.First(t => t.Owner.Id == userId);
+		var userTracker = onTrackDBContext.UserTrackers.First(t => t.Organization.OwnerId == userId);
 
 		Console.WriteLine($"[+] creating the new campaign: ${campaign.CampaignName}");
 		var newCampaign = new TrackingCampaign();
