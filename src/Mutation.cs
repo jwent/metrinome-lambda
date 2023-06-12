@@ -131,7 +131,7 @@ public class Mutation {
 		// check user AuthZ
 		if (!UserController.CanUserDo(onTrackDBContext, user.Id, user.Organization.Id, UserController.INVITE_ORGANIZATIONAL_USER_PERMISSION))
 			return new AddUserResponse { Error="Forbidden." };
-		
+
 		// find a user by email
 		var possibleUser = onTrackDBContext.Users
 				.Where(u => u.Email == email)
@@ -178,7 +178,45 @@ public class Mutation {
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 		}
 
-		// TODO: return should be a reset password url
+		// response is only for success
+		return new AddUserResponse { Id=newUser.Id };
+	}
+
+	public static AddUserResponse registerNewOrganizationalUser(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken, string fullname, string password) {
+		
+		// find a user by email
+		var newUser = onTrackDBContext.Users
+				.Where(u => u.Password == "" && u.ResetPasswordToken == resetToken)
+				.FirstOrDefault();
+		if (newUser == null) {
+			Console.WriteLine("[!] new user not found");
+			return new AddUserResponse { Error="Invalid or missing user." };
+		}
+
+		// assert stuff
+		if (fullname.Length > 128)
+			return new AddUserResponse { Error="Invalid fullname." };
+		if (password.Length < 8)
+			return new AddUserResponse { Error="Password too short." };
+
+		// salt and hash the new password
+		var passwordHash = Util.SaltAndHash(password);
+
+		// set properties
+		newUser.Password = passwordHash;
+		newUser.ResetPasswordToken = ""; // clear the reset token to prevent reuse
+
+		// add a meta property for the user's fullname
+		onTrackDBContext.UserExtraProperties.Add(new UserExtraProperty {
+			Id = Guid.NewGuid(),
+			Parent = newUser,
+			PropertyKey = "FullName",
+			PropertyValue = fullname,
+		});
+		// save the properties and meta prop
+		onTrackDBContext.SaveChanges();
+
+		// response is only for success
 		return new AddUserResponse { Id=newUser.Id };
 	}
 
