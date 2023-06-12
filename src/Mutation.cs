@@ -1,4 +1,5 @@
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.EntityFrameworkCore;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -9,7 +10,7 @@ public class Mutation {
 	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY")));
 
 
-    public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
+	public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
 		// find a user by email and password
 		var user = onTrackDBContext.Users
 				.Where(u => u.Email == email)
@@ -17,7 +18,7 @@ public class Mutation {
 
 		// verify that we found a user
 		if (user == null || user.Id == null)
-            return new LoginUserResponse { Error="Invalid email or password." };
+			return new LoginUserResponse { Error="Invalid email or password." };
 		// verify password
 		if (!Util.VerifyHash(password, user.Password))
 			return new LoginUserResponse { Error="Invalid email or password." };
@@ -37,14 +38,14 @@ public class Mutation {
 			signingCredentials: signingCredentials
 		);
 		// create token
-        var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+		var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
 
-        // return token
+		// return token
 		return new LoginUserResponse { BearerToken=tokenString };
 	}
 
 	public static AddUserResponse addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password) {
-		// find a user by email and password
+		// find a user by email
 		var possibleUser = onTrackDBContext.Users
 				.Where(u => u.Email == email)
 				.FirstOrDefault();
@@ -65,39 +66,106 @@ public class Mutation {
 		var passwordHash = Util.SaltAndHash(password);
 
 		// create both the user and their organization
-		var user = new User { Id=Guid.NewGuid(), Email=email, Password=passwordHash, CreatedAt=DateTime.Now, UserOrganizationalRole="Owner" };
-		var organization = new UserOrganization { Id=Guid.NewGuid(), OwnerId=user.Id, CreatedAt=DateTime.Now };
-		user.Organization = organization;
+		var newUser = new User { Id=Guid.NewGuid(), Email=email, Password=passwordHash, CreatedAt=DateTime.Now, ResetPasswordToken="" };
+		var newOrganization = new UserOrganization { Id=Guid.NewGuid(), OwnerId=newUser.Id, CreatedAt=DateTime.Now };
+		newUser.Organization = newOrganization;
+		var newRole = new UserOrganizationalRoleAssociation { Id=Guid.NewGuid(), OrganizationUser=newUser, Organization=newOrganization, RoleName="Owner" };
+
 
 		try {
 			// add the new user
-			onTrackDBContext.Users.Add(user);
+			onTrackDBContext.Users.Add(newUser);
 			// add the new organization
-			onTrackDBContext.UserOrganizations.Add(organization);
+			onTrackDBContext.UserOrganizations.Add(newOrganization);
+			onTrackDBContext.UserOrganizationalRoleAssociations.Add(newRole);
 			// try to commit the user
 			onTrackDBContext.SaveChanges();
 
 		} catch (Microsoft.EntityFrameworkCore.DbUpdateException e) {
 			Console.WriteLine("duplicate user key error:" + e.ToString());
-			onTrackDBContext.Users.Remove(user);
+			onTrackDBContext.Users.Remove(newUser);
+			onTrackDBContext.UserOrganizations.Remove(newOrganization);
+			onTrackDBContext.UserOrganizationalRoleAssociations.Remove(newRole);
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 		}
 
 		// add the user's tracker immediately
-		var tracker = new UserTracker { Id=Guid.NewGuid(), Organization=organization, CreatedAt=DateTime.Now };
+		var tracker = new UserTracker { Id=Guid.NewGuid(), Organization=newOrganization, CreatedAt=DateTime.Now };
 		onTrackDBContext.UserTrackers.Add(tracker);
 
 		// add a meta property for the user's fullname
 		onTrackDBContext.UserExtraProperties.Add(new UserExtraProperty {
 			Id = Guid.NewGuid(),
-			Parent = user,
+			Parent = newUser,
 			PropertyKey = "FullName",
 			PropertyValue = fullname,
 		});
 		onTrackDBContext.SaveChanges();
 
 		// return is pointless
-		return new AddUserResponse { Id=user.Id };
+		return new AddUserResponse { Id=newUser.Id };
+	}
+
+	[Authorize(Policy = "CustomerPolicy")]
+	public static AddUserResponse addUserToOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string email) {
+		// find a user by email
+		var possibleUser = onTrackDBContext.Users
+				.Where(u => u.Email == email)
+				.FirstOrDefault();
+		if (possibleUser != null) {
+			Console.WriteLine("duplicate user!");
+			return new AddUserResponse { Error="Invalid or duplicate email." };
+		}
+
+		// check email parameter settings
+		if (email.Length > 128)
+			return new AddUserResponse { Error="Invalid or duplicate email." };
+
+		// get the current user and their organization
+		var userId = Util.GetCurrentUserId(context);
+		var user = onTrackDBContext.Users
+			.Include(u => u.Organization)
+			.First(u => u.Id == userId);
+
+		// get the current user's roles
+		var roles = Util.GetUserOrganizationalRoles(onTrackDBContext, user.Id, user.Organization.Id);
+		Console.WriteLine("got user roles: " + string.Join(",", roles));
+
+		// generate a random token so that they can register
+		var randomResetToken = Util.GetSecureRandomString(64); // 256 bits of security
+		// create both the user and their organization
+		var newUser = new User {
+				Id=Guid.NewGuid(),
+				CreatedAt=DateTime.Now,
+				Email=email,
+				Password="",
+				ResetPasswordToken=randomResetToken,
+				Organization=user.Organization,
+			};
+		var newRole = new UserOrganizationalRoleAssociation {
+				Id=Guid.NewGuid(),
+				OrganizationUser=newUser,
+				Organization=user.Organization,
+				RoleName="Viewer",
+			};
+
+		try {
+			// add the new user
+			onTrackDBContext.Users.Add(newUser);
+			// add the new organization
+			onTrackDBContext.UserOrganizationalRoleAssociations.Add(newRole);
+			// try to commit the user
+			onTrackDBContext.SaveChanges();
+
+		} catch (Microsoft.EntityFrameworkCore.DbUpdateException e) {
+			Console.WriteLine("duplicate user key error:" + e.ToString());
+			onTrackDBContext.Users.Remove(newUser);
+			onTrackDBContext.UserOrganizationalRoleAssociations.Remove(newRole);
+			return new AddUserResponse { Error="Invalid or duplicate email." };
+		}
+
+		// TODO: return should be a reset password url
+		return new AddUserResponse { Id=newUser.Id };
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]

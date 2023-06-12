@@ -53,6 +53,10 @@ public class Util {
 		return CryptographicOperations.FixedTimeEquals(inputHash, hash);
 	}
 
+	public static string GetSecureRandomString(int stringLength) {
+		return BitConverter.ToString(RandomNumberGenerator.GetBytes(stringLength / 2)).Replace("-", string.Empty);
+	}
+
 	public static string CompressJavascriptStub(string javascriptStub) {
 		javascriptStub = Regex.Replace(javascriptStub, @"\s*\}\s*", "}");
 		javascriptStub = Regex.Replace(javascriptStub, @"\s*\{\s*", "{");
@@ -81,6 +85,13 @@ public class Util {
 		var user = onTrackDBContext.Users
 			.Include(u => u.Organization)
 			.First(u => u.Id == userId);
-        return onTrackDBContext.UserTrackers.First(t => t.Organization.Id == user.Organization.Id);
+		return onTrackDBContext.UserTrackers.First(t => t.Organization.Id == user.Organization.Id);
+	}
+
+	public static List<string> GetUserOrganizationalRoles(OnTrackDBContext onTrackDBContext, Guid userId, Guid organizationId) {
+		return onTrackDBContext.UserOrganizationalRoleAssociations
+			.Where(r => r.OrganizationUser.Id == userId && r.Organization.Id == organizationId)
+			.Select(r => r.RoleName)
+			.ToList();
 	}
 }

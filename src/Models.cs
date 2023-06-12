@@ -9,10 +9,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 public class User {
 	public Guid Id { get; set; }
 	public UserOrganization Organization { get; set; }
-	public string UserOrganizationalRole { get; set; }
 	public string Email { get; set; }
 	public string Password { get; set; }
 	public DateTime CreatedAt { get; set; }
+	public string ResetPasswordToken { get; set; }
 }
 
 public class UserExtraProperty {
@@ -20,6 +20,13 @@ public class UserExtraProperty {
 	public User Parent { get; set; }
 	public string PropertyKey { get; set; }
 	public string PropertyValue { get; set; }
+}
+
+public class UserOrganizationalRoleAssociation {
+	public Guid Id { get; set; }
+	public User OrganizationUser { get; set; }
+	public UserOrganization Organization { get; set; }
+	public string RoleName { get; set; }
 }
 
 public class UserOrganization {

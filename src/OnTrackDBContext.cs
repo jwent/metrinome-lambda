@@ -6,8 +6,9 @@ using GraphQL.Authorization;
 public class OnTrackDBContext : DbContext {
 	public OnTrackDBContext(DbContextOptions options) : base(options) {}
 	public DbSet<User> Users { get; set; } = null!;
-	public DbSet<UserOrganization> UserOrganizations { get; set; } = null!;
 	public DbSet<UserExtraProperty> UserExtraProperties { get; set; } = null!;
+	public DbSet<UserOrganization> UserOrganizations { get; set; } = null!;
+	public DbSet<UserOrganizationalRoleAssociation> UserOrganizationalRoleAssociations { get; set; } = null!;
 	public DbSet<UserTracker> UserTrackers { get; set; } = null!;
 	public DbSet<TrackingCampaign> TrackingCampaigns { get; set; } = null!;
 	public DbSet<TrackingCampaignExtraProperty> TrackingCampaignExtraProperties { get; set; } = null!;
