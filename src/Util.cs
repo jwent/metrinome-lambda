@@ -65,33 +65,4 @@ public class Util {
 
 		return javascriptStub;
 	}
-
-	public static Guid GetCurrentUserId(IResolveFieldContext context) {
-		if (context.User.Identity is ClaimsIdentity identity)
-			return Guid.Parse(identity.FindFirst("id").Value);
-		else
-			throw new Exception("id claim missing");
-	}
-
-	public static TrackingCampaign GetCampaignById(OnTrackDBContext onTrackDBContext, Guid userId, Guid id) {
-		Console.WriteLine($"[+] searching campaigns by campaignId: ${id}");
-		var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == id && e.ParentTracker.Organization.OwnerId == userId);
-		if (existingCampaign == null)
-			throw new Exception("campaign not found!");
-		return existingCampaign;
-	}
-
-	public static UserTracker GetUserTrackerByUser(OnTrackDBContext onTrackDBContext, Guid userId) {
-		var user = onTrackDBContext.Users
-			.Include(u => u.Organization)
-			.First(u => u.Id == userId);
-		return onTrackDBContext.UserTrackers.First(t => t.Organization.Id == user.Organization.Id);
-	}
-
-	public static List<string> GetUserOrganizationalRoles(OnTrackDBContext onTrackDBContext, Guid userId, Guid organizationId) {
-		return onTrackDBContext.UserOrganizationalRoleAssociations
-			.Where(r => r.OrganizationUser.Id == userId && r.Organization.Id == organizationId)
-			.Select(r => r.RoleName)
-			.ToList();
-	}
 }

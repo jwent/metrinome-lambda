@@ -1,0 +1,49 @@
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.EntityFrameworkCore;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using GraphQL;
+using GraphQL.Authorization;
+
+public class UserController {
+	public const string INVITE_ORGANIZATIONAL_USER_PERMISSION = "InviteOrganizationalUser";
+	public const string CREATE_CAMPAIGNS_PERMISSION = "CreateCampaigns";
+	public const string EDIT_CAMPAIGNS_PERMISSION = "EditCampaigns";
+	public const string READ_CAMPAIGNS_PERMISSION = "ReadCampaigns";
+	public const string READ_INSIGHTS_PERMISSION = "ReadInsights";
+
+	public static Dictionary<string, List<string>> rolePolicies = new Dictionary<string, List<string>> {
+		{ "Owner", new List<string> {
+			INVITE_ORGANIZATIONAL_USER_PERMISSION,
+			CREATE_CAMPAIGNS_PERMISSION,
+			EDIT_CAMPAIGNS_PERMISSION,
+			READ_CAMPAIGNS_PERMISSION,
+			READ_INSIGHTS_PERMISSION,
+		} },
+		{ "Viewer", new List<string> {
+			READ_CAMPAIGNS_PERMISSION,
+			READ_INSIGHTS_PERMISSION,
+		} },
+	};
+
+	public static Guid GetCurrentUserId(IResolveFieldContext context) {
+		if (context.User.Identity is ClaimsIdentity identity)
+			return Guid.Parse(identity.FindFirst("id").Value);
+		else
+			throw new Exception("id claim missing");
+	}
+
+	public static List<string> GetUserOrganizationalRoles(OnTrackDBContext onTrackDBContext, Guid userId, Guid organizationId) {
+		return onTrackDBContext.UserOrganizationalRoleAssociations
+			.Where(r => r.OrganizationUser.Id == userId && r.Organization.Id == organizationId)
+			.Select(r => r.RoleName)
+			.ToList();
+	}
+
+	public static bool CanUserDo(OnTrackDBContext onTrackDBContext, Guid userId, Guid organizationId, string action) {
+		return GetUserOrganizationalRoles(onTrackDBContext, userId, organizationId).SelectMany(role => rolePolicies[role]).Contains(action);
+	}
+}
+
+

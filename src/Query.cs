@@ -11,7 +11,7 @@ public class Query
     [Authorize(Policy = "CustomerPolicy")]
     public static UserData getUserData(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext)
     {
-        var userId = Util.GetCurrentUserId(context);
+        var userId = UserController.GetCurrentUserId(context);
         var userdata = onTrackDBContext.Users
             .Where(u => u.Id == userId)
             .Join(onTrackDBContext.UserExtraProperties,
@@ -30,9 +30,9 @@ public class Query
     [Authorize(Policy = "CustomerPolicy")]
     public static string? trackerCode(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext)
     {
-        var userId = Util.GetCurrentUserId(context);
+        var userId = UserController.GetCurrentUserId(context);
 
-        var userTracker = Util.GetUserTrackerByUser(onTrackDBContext, userId);
+        var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
         return Util.CompressJavascriptStub(@"<script type=""text/javascript"">
@@ -80,7 +80,7 @@ public class Query
     [Authorize(Policy = "CustomerPolicy")]
     public static TrackingCampaign getCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId)
     {
-        var userId = Util.GetCurrentUserId(context);
+        var userId = UserController.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
@@ -94,7 +94,7 @@ public class Query
     [Authorize(Policy = "CustomerPolicy")]
     public static Campaigns myCampaigns(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, DateTime? createdAt, int length=10)
     {
-        var userId = Util.GetCurrentUserId(context);
+        var userId = UserController.GetCurrentUserId(context);
 
         IOrderedQueryable<TrackingCampaign> campaigns = (IOrderedQueryable<TrackingCampaign>)onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Organization.OwnerId == userId);
         int count = campaigns.Count();
@@ -122,7 +122,7 @@ public class Query
     [Authorize(Policy = "CustomerPolicy")]
     public static Clicks myCampaignClicks(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, DateTime? createdAt)
     {
-        var userId = Util.GetCurrentUserId(context);
+        var userId = UserController.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
@@ -172,7 +172,7 @@ public class Query
     [Authorize(Policy = "CustomerPolicy")]
     public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId)
     {
-        var userId = Util.GetCurrentUserId(context);
+        var userId = UserController.GetCurrentUserId(context);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
@@ -240,8 +240,8 @@ public class Query
     [Authorize(Policy = "CustomerPolicy")]
     public static GetCampaignClickStatsResponse myCampaignClickStats(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, string? groupby = "day")
     {
-        var userId = Util.GetCurrentUserId(context);
-        var campaign = Util.GetCampaignById(onTrackDBContext, userId, Guid.Parse(campaignId));
+        var userId = UserController.GetCurrentUserId(context);
+        var campaign = TrackerController.GetCampaignById(onTrackDBContext, userId, Guid.Parse(campaignId));
 
         // get the clicks by campaign
         var clicksQuery = onTrackDBContext.TrackerClicks
@@ -267,8 +267,8 @@ public class Query
     [Authorize(Policy = "CustomerPolicy")]
     public static GetCampaignConversionStatsResponse myCampaignConversionStats(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, string? groupby = "day")
     {
-        var userId = Util.GetCurrentUserId(context);
-        var campaign = Util.GetCampaignById(onTrackDBContext, userId, Guid.Parse(campaignId));
+        var userId = UserController.GetCurrentUserId(context);
+        var campaign = TrackerController.GetCampaignById(onTrackDBContext, userId, Guid.Parse(campaignId));
 
         // get the clicks by campaign
         var conversionsQuery = onTrackDBContext.TrackerClicks
@@ -300,8 +300,8 @@ public class Query
             string groupby) {
 
         // get user properties for reference
-        var userId = Util.GetCurrentUserId(context);
-        var userTracker = Util.GetUserTrackerByUser(onTrackDBContext, userId);
+        var userId = UserController.GetCurrentUserId(context);
+        var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
         // select where we want to get stuff from
         var query =
@@ -385,8 +385,8 @@ public class Query
             string groupby) {
 
         // get user properties for reference
-        var userId = Util.GetCurrentUserId(context);
-        var userTracker = Util.GetUserTrackerByUser(onTrackDBContext, userId);
+        var userId = UserController.GetCurrentUserId(context);
+        var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
         // select where we want to get stuff from
         var query =

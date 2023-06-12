@@ -9,7 +9,6 @@ using GraphQL.Authorization;
 public class Mutation {
 	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY")));
 
-
 	public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
 		// find a user by email and password
 		var user = onTrackDBContext.Users
@@ -65,11 +64,26 @@ public class Mutation {
 		// salt and hash the new password
 		var passwordHash = Util.SaltAndHash(password);
 
-		// create both the user and their organization
-		var newUser = new User { Id=Guid.NewGuid(), Email=email, Password=passwordHash, CreatedAt=DateTime.Now, ResetPasswordToken="" };
-		var newOrganization = new UserOrganization { Id=Guid.NewGuid(), OwnerId=newUser.Id, CreatedAt=DateTime.Now };
+		// create both the user, their organization, and the role between them
+		var newUser = new User {
+				Id=Guid.NewGuid(),
+				Email=email,
+				Password=passwordHash,
+				CreatedAt=DateTime.Now,
+				ResetPasswordToken="",
+			};
+		var newOrganization = new UserOrganization {
+				Id=Guid.NewGuid(),
+				OwnerId=newUser.Id,
+				CreatedAt=DateTime.Now,
+			};
 		newUser.Organization = newOrganization;
-		var newRole = new UserOrganizationalRoleAssociation { Id=Guid.NewGuid(), OrganizationUser=newUser, Organization=newOrganization, RoleName="Owner" };
+		var newRole = new UserOrganizationalRoleAssociation {
+				Id=Guid.NewGuid(),
+				OrganizationUser=newUser,
+				Organization=newOrganization,
+				RoleName="Owner",
+			};
 
 
 		try {
@@ -108,6 +122,16 @@ public class Mutation {
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static AddUserResponse addUserToOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string email) {
+		// get the current user and their organization
+		var userId = UserController.GetCurrentUserId(context);
+		var user = onTrackDBContext.Users
+			.Include(u => u.Organization)
+			.First(u => u.Id == userId);
+
+		// check user AuthZ
+		if (!UserController.CanUserDo(onTrackDBContext, user.Id, user.Organization.Id, UserController.INVITE_ORGANIZATIONAL_USER_PERMISSION))
+			return new AddUserResponse { Error="Forbidden." };
+		
 		// find a user by email
 		var possibleUser = onTrackDBContext.Users
 				.Where(u => u.Email == email)
@@ -120,16 +144,6 @@ public class Mutation {
 		// check email parameter settings
 		if (email.Length > 128)
 			return new AddUserResponse { Error="Invalid or duplicate email." };
-
-		// get the current user and their organization
-		var userId = Util.GetCurrentUserId(context);
-		var user = onTrackDBContext.Users
-			.Include(u => u.Organization)
-			.First(u => u.Id == userId);
-
-		// get the current user's roles
-		var roles = Util.GetUserOrganizationalRoles(onTrackDBContext, user.Id, user.Organization.Id);
-		Console.WriteLine("got user roles: " + string.Join(",", roles));
 
 		// generate a random token so that they can register
 		var randomResetToken = Util.GetSecureRandomString(64); // 256 bits of security
@@ -170,10 +184,10 @@ public class Mutation {
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static Guid? createCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, TrackingCampaignSubmission campaign) {
-		var userId = Util.GetCurrentUserId(context);
+		var userId = UserController.GetCurrentUserId(context);
 
 		Console.WriteLine($"[+] searching user trackers by userId: ${userId}");
-		var userTracker = Util.GetUserTrackerByUser(onTrackDBContext, userId);
+		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
 		Console.WriteLine($"[+] creating the new campaign: ${campaign.CampaignName}");
 		var newCampaign = new TrackingCampaign();
