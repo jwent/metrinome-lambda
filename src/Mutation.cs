@@ -12,7 +12,7 @@ public class Mutation {
 	public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
 		// find a user by email and password
 		var user = onTrackDBContext.Users
-				.Where(u => u.Email == email)
+				.Where(u => u.Email == email && u.UserState == "Active")
 				.FirstOrDefault();
 
 		// verify that we found a user
@@ -43,6 +43,29 @@ public class Mutation {
 		return new LoginUserResponse { BearerToken=tokenString };
 	}
 
+	public static SuccessResponse forgotPassword([FromServices] OnTrackDBContext onTrackDBContext, string email) {
+		// find a user by email
+		var user = onTrackDBContext.Users
+				.Where(u => u.UserState == "Active" && u.Email == email)
+				.FirstOrDefault();
+		if (user == null) {
+			Console.WriteLine("[!] user not found");
+			return new SuccessResponse { Success=true };
+		}
+
+
+		// generate a random token so that they can reset their password
+		var randomResetToken = Util.GetSecureRandomString(64); // 256 bits of security
+		user.ResetPasswordToken = randomResetToken;
+		// save the property
+		onTrackDBContext.SaveChanges();
+
+
+		// TODO: email the user about their forgotten password
+
+		return new SuccessResponse { Success=true };
+	}
+
 	public static AddUserResponse addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password) {
 		// find a user by email
 		var possibleUser = onTrackDBContext.Users
@@ -71,6 +94,7 @@ public class Mutation {
 				Password=passwordHash,
 				CreatedAt=DateTime.Now,
 				ResetPasswordToken="",
+				UserState="Active",
 			};
 		var newOrganization = new UserOrganization {
 				Id=Guid.NewGuid(),
@@ -155,6 +179,7 @@ public class Mutation {
 				Password="",
 				ResetPasswordToken=randomResetToken,
 				Organization=user.Organization,
+				UserState="Invited",
 			};
 		var newRole = new UserOrganizationalRoleAssociation {
 				Id=Guid.NewGuid(),
@@ -186,7 +211,7 @@ public class Mutation {
 		
 		// find a user by email
 		var newUser = onTrackDBContext.Users
-				.Where(u => u.Password == "" && u.ResetPasswordToken == resetToken)
+				.Where(u => u.UserState == "Invited" && u.ResetPasswordToken == resetToken)
 				.FirstOrDefault();
 		if (newUser == null) {
 			Console.WriteLine("[!] new user not found");
@@ -204,6 +229,7 @@ public class Mutation {
 
 		// set properties
 		newUser.Password = passwordHash;
+		newUser.UserState = "Active";
 		newUser.ResetPasswordToken = ""; // clear the reset token to prevent reuse
 
 		// add a meta property for the user's fullname

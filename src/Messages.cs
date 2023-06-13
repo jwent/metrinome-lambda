@@ -174,6 +174,9 @@ public class AddUserResponse {
 	public Guid? Id { get; set; }
 	public string? Error { get; set; }
 }
+public class SuccessResponse {
+	public bool? Success { get; set; }
+}
 
 
 public class PostbackCodes {

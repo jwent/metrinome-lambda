@@ -28,9 +28,13 @@ public class UserController {
 	};
 
 	public static Guid GetCurrentUserId(IResolveFieldContext context) {
-		if (context.User.Identity is ClaimsIdentity identity)
-			return Guid.Parse(identity.FindFirst("id").Value);
-		else
+		if (context.User?.Identity is ClaimsIdentity identity) {
+			var id = identity.FindFirst("id");
+			if (id != null && id.Value != null)
+				return Guid.Parse(id.Value);
+			else
+				throw new Exception("id claim missing");
+		} else
 			throw new Exception("id claim missing");
 	}
 

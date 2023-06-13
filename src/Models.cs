@@ -13,6 +13,7 @@ public class User {
 	public string Password { get; set; }
 	public DateTime CreatedAt { get; set; }
 	public string ResetPasswordToken { get; set; }
+	public string UserState { get; set; }
 }
 
 public class UserExtraProperty {
