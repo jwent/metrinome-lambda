@@ -9,8 +9,7 @@ public class Query
     // public static List<User> users() => onTrackDBContext.Users.ToList();
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static UserData getUserData(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext)
-    {
+    public static UserData getUserData(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = UserController.GetCurrentUserId(context);
         var userdata = onTrackDBContext.Users
             .Where(u => u.Id == userId)
@@ -28,8 +27,7 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static string? trackerCode(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext)
-    {
+    public static string? trackerCode(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = UserController.GetCurrentUserId(context);
 
         var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
@@ -53,8 +51,7 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static PostbackCodes postbackCode(IResolveFieldContext context)
-    {
+    public static PostbackCodes postbackCode(IResolveFieldContext context) {
         var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
         return new PostbackCodes
         {
@@ -78,13 +75,13 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static TrackingCampaign getCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId)
-    {
+    public static TrackingCampaign getCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId) {
         var userId = UserController.GetCurrentUserId(context);
+        var organizationId = UserController.GetCurrentOrganizationId(context, onTrackDBContext);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-        var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == campaignGuid && e.ParentTracker.Organization.OwnerId == userId, null);
+        var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == campaignGuid && e.ParentTracker.Organization.Id == organizationId, null);
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
@@ -92,11 +89,11 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Campaigns myCampaigns(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, DateTime? createdAt, int length=10)
-    {
+    public static Campaigns myCampaigns(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, DateTime? createdAt, int length=10) {
         var userId = UserController.GetCurrentUserId(context);
+        var organizationId = UserController.GetCurrentOrganizationId(context, onTrackDBContext);
 
-        IOrderedQueryable<TrackingCampaign> campaigns = (IOrderedQueryable<TrackingCampaign>)onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Organization.OwnerId == userId);
+        IOrderedQueryable<TrackingCampaign> campaigns = (IOrderedQueryable<TrackingCampaign>)onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Organization.Id == organizationId);
         int count = campaigns.Count();
         List<TrackingCampaign> campaignList;
         if (createdAt.HasValue)
@@ -120,13 +117,13 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Clicks myCampaignClicks(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, DateTime? createdAt)
-    {
+    public static Clicks myCampaignClicks(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, DateTime? createdAt) {
         var userId = UserController.GetCurrentUserId(context);
+        var organizationId = UserController.GetCurrentOrganizationId(context, onTrackDBContext);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Organization.OwnerId == userId);
+        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Organization.Id == organizationId);
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
@@ -170,13 +167,13 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId)
-    {
+    public static TrackingCampaignDetails myCampaignDetails(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId) {
         var userId = UserController.GetCurrentUserId(context);
+        var organizationId = UserController.GetCurrentOrganizationId(context, onTrackDBContext);
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Organization.OwnerId == userId);
+        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Organization.Id == organizationId);
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
@@ -238,10 +235,10 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static GetCampaignClickStatsResponse myCampaignClickStats(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, string? groupby = "day")
-    {
+    public static GetCampaignClickStatsResponse myCampaignClickStats(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, string? groupby = "day") {
         var userId = UserController.GetCurrentUserId(context);
-        var campaign = TrackerController.GetCampaignById(onTrackDBContext, userId, Guid.Parse(campaignId));
+        var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
+        var campaign = TrackerController.GetCampaignById(onTrackDBContext, userTracker.Id, Guid.Parse(campaignId));
 
         // get the clicks by campaign
         var clicksQuery = onTrackDBContext.TrackerClicks
@@ -265,10 +262,10 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static GetCampaignConversionStatsResponse myCampaignConversionStats(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, string? groupby = "day")
-    {
+    public static GetCampaignConversionStatsResponse myCampaignConversionStats(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, string? groupby = "day") {
         var userId = UserController.GetCurrentUserId(context);
-        var campaign = TrackerController.GetCampaignById(onTrackDBContext, userId, Guid.Parse(campaignId));
+        var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
+        var campaign = TrackerController.GetCampaignById(onTrackDBContext, userTracker.Id, Guid.Parse(campaignId));
 
         // get the clicks by campaign
         var conversionsQuery = onTrackDBContext.TrackerClicks

@@ -7,9 +7,9 @@ using GraphQL;
 using GraphQL.Authorization;
 
 public class TrackerController {
-	public static TrackingCampaign GetCampaignById(OnTrackDBContext onTrackDBContext, Guid userId, Guid id) {
+	public static TrackingCampaign GetCampaignById(OnTrackDBContext onTrackDBContext, Guid userTrackerId, Guid id) {
 		Console.WriteLine($"[+] searching campaigns by campaignId: ${id}");
-		var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == id && e.ParentTracker.Organization.OwnerId == userId);
+		var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == id && e.ParentTracker.Id == userTrackerId);
 		if (existingCampaign == null)
 			throw new Exception("campaign not found!");
 		return existingCampaign;

@@ -38,6 +38,20 @@ public class UserController {
 			throw new Exception("id claim missing");
 	}
 
+	public static Guid GetCurrentOrganizationId(IResolveFieldContext context, OnTrackDBContext onTrackDBContext) {
+		var userId = GetCurrentUserId(context);
+		var organizationId = onTrackDBContext.Users
+				.Where(u => u.Id == userId)
+				.Select(u => u.Organization.Id)
+				.FirstOrDefault();
+
+
+		if (organizationId == null)
+			throw new Exception("organizationId missing");
+		else
+			return organizationId;
+	}
+
 	public static List<string> GetUserOrganizationalRoles(OnTrackDBContext onTrackDBContext, Guid userId, Guid organizationId) {
 		return onTrackDBContext.UserOrganizationalRoleAssociations
 			.Where(r => r.OrganizationUser.Id == userId && r.Organization.Id == organizationId)
