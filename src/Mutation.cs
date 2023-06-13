@@ -7,7 +7,7 @@ using GraphQL;
 using GraphQL.Authorization;
 
 public class Mutation {
-	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY")));
+	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Util.ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY"))));
 
 	public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
 		// find a user by email and password
@@ -16,7 +16,7 @@ public class Mutation {
 				.FirstOrDefault();
 
 		// verify that we found a user
-		if (user == null || user.Id == null)
+		if (user == null)
 			return new LoginUserResponse { Error="Invalid email or password." };
 		// verify password
 		if (!Util.VerifyHash(password, user.Password))

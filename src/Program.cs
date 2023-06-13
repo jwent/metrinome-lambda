@@ -12,10 +12,6 @@ using Microsoft.EntityFrameworkCore;
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
-// builder.Services
-//    .AddGraphQLServer()
-//    .AddQueryType<Query>();
-
 builder.Services
 	.AddAWSLambdaHosting(LambdaEventSource.HttpApi)
 	.AddCors(options => {
@@ -25,11 +21,6 @@ builder.Services
 						.WithOrigins("*");
 			});
 		});
-// builder.Services
-// 		.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
-// 			Console.WriteLine("cookie auth?");
-// 			o.Cookie.Name = "graphql-auth";
-// 		});
 
 builder.Services
 	.AddAuthentication(options => {
@@ -45,7 +36,7 @@ builder.Services
 			ValidAudience = "audience",
 			ValidIssuer = "issuer",
 			RequireSignedTokens = false,
-			IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY")))
+			IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Util.ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY"))))
         };
 
 		options.RequireHttpsMetadata = false;
@@ -55,41 +46,39 @@ builder.Services
 	.AddAuthorization(policyBuilder => {
 		policyBuilder.AddPolicy("CustomerPolicy", p => p.RequireClaim(ClaimTypes.Role, "Customer"));
 	});
-// builder.Services
-// 	.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
-// builder.Services
-// 	.AddSingleton<IAuthorizationEvaluator, AuthorizationEvaluator>()
-// 	.AddTransient<IValidationRule, AuthorizationValidationRule>()
-// 	;
 
 
 
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 AppContext.SetSwitch("Npgsql.DisableDateTimeInfinityConversions", true);
 
-// builder.Services.AddErrorInfoProvider(opt => opt.ExposeExceptionStackTrace = true);
 builder.Services.AddDbContext<OnTrackDBContext>(options =>
-    options.UseNpgsql(Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING")));
+    options.UseNpgsql(Util.ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING"))));
 
 builder.Services
 	.AddGraphQL(b => b
 		.AddAutoSchema<Query>(s => s.WithMutation<Mutation>())
+		.ConfigureExecutionOptions(opts => {})
 		.AddSystemTextJson()
 		.AddAuthorizationRule()
 		.AddUserContextBuilder(httpContext => new MyGraphQLUserContext(httpContext.User))
     .AddErrorInfoProvider((opts, serviceProvider) => {
-        opts.ExposeExceptionStackTrace = true;
+    	// only expose stack traces if we are not in production
+        opts.ExposeExceptionDetails = (Environment.GetEnvironmentVariable("ONTRACK_STAGE") ?? "LOCALTEST") != "PROD";
     }));
 
 var app = builder.Build();
 
 app.UseRouting();
-app.UseGraphQLPlayground(
-	"/",
-	new GraphQL.Server.Ui.Playground.PlaygroundOptions {
-		GraphQLEndPoint = "/graphql",
-		SubscriptionsEndPoint = "/graphql",
-	});
+// only enable playground if we are testing locally
+if ((Environment.GetEnvironmentVariable("ONTRACK_STAGE") ?? "LOCALTEST") == "LOCALTEST") {
+	app.UseGraphQLPlayground(
+		"/",
+		new GraphQL.Server.Ui.Playground.PlaygroundOptions {
+			GraphQLEndPoint = "/graphql",
+			SubscriptionsEndPoint = "/graphql",
+		});
+}
 
 app.UseAuthentication();
 app.UseAuthorization();

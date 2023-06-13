@@ -65,4 +65,10 @@ public class Util {
 
 		return javascriptStub;
 	}
+
+	public static T ValueOrDie<T>(T? value) {
+		if (value == null)
+			throw new Exception("[!] missing critical value!");
+		return value;
+	}
 }
