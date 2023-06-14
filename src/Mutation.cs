@@ -145,7 +145,7 @@ public class Mutation {
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]
-	public static AddUserResponse addUserToOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string email) {
+	public static async Task<AddUserResponse> addUserToOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string email) {
 		// get the current user and their organization
 		var userId = UserController.GetCurrentUserId(context);
 		var user = onTrackDBContext.Users
@@ -203,7 +203,7 @@ public class Mutation {
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 		}
 
-		EmailController.SendEmail(email, "You've been invited to an On Track Analytics organization",
+		await EmailController.SendEmail(email, "You've been invited to an On Track Analytics organization",
 				$"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}SignUpOrgUser?resetkey={randomResetToken}'>this link</a> to register your account and join the organization.");
 
 		// response is only for success
