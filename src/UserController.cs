@@ -43,13 +43,12 @@ public class UserController {
 		var organizationId = onTrackDBContext.Users
 				.Where(u => u.Id == userId)
 				.Select(u => u.Organization.Id)
-				.FirstOrDefault();
+				.First();
 
-
-		if (organizationId == null)
-			throw new Exception("organizationId missing");
-		else
-			return organizationId;
+		// if (organizationId == null)
+		// 	throw new Exception("organizationId missing");
+		// else
+		return organizationId;
 	}
 
 	public static List<string> GetUserOrganizationalRoles(OnTrackDBContext onTrackDBContext, Guid userId, Guid organizationId) {
