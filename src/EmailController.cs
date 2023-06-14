@@ -19,7 +19,7 @@ public class EmailController {
 					},
 					Subject = new Content { Charset = "UTF-8", Data = emailSubject }
 				},
-				Source = toEmail, // "noreply@app.ontrackanalytics.com",
+				Source = "mirror12k+ontracktest@gmail.com", // "noreply@app.ontrackanalytics.com",
 			});
 			Console.WriteLine($"[+] SES messageId: {res.MessageId}");
 			return res.MessageId;

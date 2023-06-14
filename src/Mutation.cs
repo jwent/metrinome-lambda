@@ -203,6 +203,9 @@ public class Mutation {
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 		}
 
+		EmailController.SendEmail(email, "You've been invited to an On Track Analytics organization",
+				$"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}SignUpOrgUser?resetkey={randomResetToken}'>this link</a> to register your account and join the organization.");
+
 		// response is only for success
 		return new AddUserResponse { Id=newUser.Id };
 	}
