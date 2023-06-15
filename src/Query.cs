@@ -35,8 +35,7 @@ public class Query
             .Include(u => u.UserRoles)
             .First();
 
-        return new UserData
-        {
+        return new UserData {
             Email=user.Email,
             CreatedAt=user.CreatedAt,
             FullName=user.ExtraProperties.FirstOrDefault(prop => prop.PropertyKey == "FullName")?.PropertyValue,

@@ -43,12 +43,17 @@ public class UserOrganization {
 
 	[InverseProperty("Organization")]
 	public List<User> Users { get; set; }
+	[InverseProperty("Organization")]
+	public List<UserTracker> OrganizationalTrackers { get; set; }
 }
 
 public class UserTracker {
 	public Guid Id { get; set; }
 	public UserOrganization Organization { get; set; }
 	public DateTime CreatedAt { get; set; }
+
+	[InverseProperty("ParentTracker")]
+	public List<TrackingCampaign> Campaigns { get; set; }
 }
 
 public class TrackingCampaign {
@@ -67,6 +72,11 @@ public class TrackingCampaign {
 	public string? CartPageURL { get; set; }
 	public string? LandingPageURL { get; set; }
 	public string? PrivacyPageURL { get; set; }
+
+	[InverseProperty("Campaign")]
+	public List<TrackerClick> Clicks { get; set; }
+	[InverseProperty("Parent")]
+	public List<TrackingCampaignExtraProperty> ExtraProperties { get; set; }
 }
 
 public class TrackingCampaignExtraProperty {
@@ -90,6 +100,9 @@ public class TrackerClick {
 	public DateTime? ConversionDate { get; set; }
 	public bool? Conversion { get; set; }
     public bool? IsDesktop { get; set; }
+
+	[InverseProperty("ClickParent")]
+	public List<TrackerClickExtraProperty> ExtraProperties { get; set; }
 }
 
 public class TrackerClickExtraProperty {
