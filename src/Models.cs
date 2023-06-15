@@ -7,6 +7,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 [Index(nameof(Email), IsUnique=true)]
 public class User {
+
 	public Guid Id { get; set; }
 	public UserOrganization Organization { get; set; }
 	public string Email { get; set; }
@@ -14,6 +15,11 @@ public class User {
 	public DateTime CreatedAt { get; set; }
 	public string ResetPasswordToken { get; set; }
 	public string UserState { get; set; }
+
+	[InverseProperty("Parent")]
+	public List<UserExtraProperty> ExtraProperties { get; set; }
+	[InverseProperty("OrganizationUser")]
+	public List<UserOrganizationalRoleAssociation> UserRoles { get; set; }
 }
 
 public class UserExtraProperty {
@@ -34,6 +40,9 @@ public class UserOrganization {
 	public Guid Id { get; set; }
 	public Guid OwnerId { get; set; }
 	public DateTime CreatedAt { get; set; }
+
+	[InverseProperty("Organization")]
+	public List<User> Users { get; set; }
 }
 
 public class UserTracker {

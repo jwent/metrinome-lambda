@@ -54,6 +54,19 @@ public class UserController {
 		return organizationId;
 	}
 
+	public static UserOrganization GetCurrentOrganization(IResolveFieldContext context, OnTrackDBContext onTrackDBContext) {
+		var userId = GetCurrentUserId(context);
+		var organization = onTrackDBContext.Users
+				.Where(u => u.Id == userId)
+				.Include(u => u.Organization.Users)
+				.ThenInclude(u => u.ExtraProperties)
+				.Include(u => u.Organization.Users)
+				.ThenInclude(u => u.UserRoles)
+				.Select(u => u.Organization)
+				.First();
+		return organization;
+	}
+
 	public static List<string> GetUserOrganizationalRoles(OnTrackDBContext onTrackDBContext, Guid userId, Guid organizationId) {
 		return onTrackDBContext.UserOrganizationalRoleAssociations
 			.Where(r => r.OrganizationUser.Id == userId && r.Organization.Id == organizationId)

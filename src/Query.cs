@@ -1,6 +1,7 @@
 using GraphQL;
 using GraphQL.Authorization;
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 
 public class Query
 {
@@ -9,20 +10,37 @@ public class Query
     // public static List<User> users() => onTrackDBContext.Users.ToList();
 
     [Authorize(Policy = "CustomerPolicy")]
+    public static OrganizationData getOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
+        var org = UserController.GetCurrentOrganization(context, onTrackDBContext);
+        var userdatalist = org.Users
+            .Select(user => new UserData {
+                Email=user.Email,
+                CreatedAt=user.CreatedAt,
+                FullName=user.ExtraProperties.FirstOrDefault(prop => prop.PropertyKey == "FullName")?.PropertyValue,
+                UserRoles=user.UserRoles.Select(r => r.RoleName).ToList(),
+                UserState=user.UserState,
+            }).ToList();
+        return new OrganizationData {
+            CreatedAt=org.CreatedAt,
+            Users=userdatalist,
+        };
+    }
+
+    [Authorize(Policy = "CustomerPolicy")]
     public static UserData getUserData(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
         var userId = UserController.GetCurrentUserId(context);
-        var userdata = onTrackDBContext.Users
+        var user = onTrackDBContext.Users
             .Where(u => u.Id == userId)
-            .Join(onTrackDBContext.UserExtraProperties,
-                user => new { user.Id, PropertyKey = "FullName" },
-                extra => new { extra.Parent.Id, extra.PropertyKey },
-                (user, extraFullName) => new { user, extraFullName }
-            ).First();
+            .Include(u => u.ExtraProperties)
+            .Include(u => u.UserRoles)
+            .First();
+
         return new UserData
         {
-            Email = userdata.user.Email,
-            CreatedAt = userdata.user.CreatedAt,
-            FullName = userdata.extraFullName.PropertyValue,
+            Email=user.Email,
+            CreatedAt=user.CreatedAt,
+            FullName=user.ExtraProperties.FirstOrDefault(prop => prop.PropertyKey == "FullName")?.PropertyValue,
+            UserRoles=user.UserRoles.Select(r => r.RoleName).ToList(),
         };
     }
 

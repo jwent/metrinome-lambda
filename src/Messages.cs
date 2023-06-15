@@ -5,8 +5,16 @@
 public class UserData {
 	public string? Email { get; set; }
 	public DateTime? CreatedAt { get; set; }
+	public string? UserState { get; set; }
 	
 	public string? FullName { get; set; }
+	public List<string>? UserRoles { get; set; }
+}
+
+
+public class OrganizationData {
+	public DateTime? CreatedAt { get; set; }
+	public List<UserData>? Users { get; set; }
 }
 
 public class TrackingCampaignSubmission {
