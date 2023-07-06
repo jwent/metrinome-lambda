@@ -40,6 +40,7 @@ public class UserOrganization {
 	public Guid Id { get; set; }
 	public Guid OwnerId { get; set; }
 	public DateTime CreatedAt { get; set; }
+	public String SubscriptionPlan { get; set; }
 
 	[InverseProperty("Organization")]
 	public List<User> Users { get; set; }
