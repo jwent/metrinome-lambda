@@ -15,6 +15,7 @@ public class UserData {
 public class OrganizationData {
 	public DateTime? CreatedAt { get; set; }
 	public List<UserData>? Users { get; set; }
+	public OrganizationalSubscriptionPlan? SubscriptionPlan { get; set; }
 }
 
 public class TrackingCampaignSubmission {

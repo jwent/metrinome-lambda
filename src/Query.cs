@@ -23,6 +23,7 @@ public class Query
         return new OrganizationData {
             CreatedAt=org.CreatedAt,
             Users=userdatalist,
+            SubscriptionPlan=org.SubscriptionPlan,
         };
     }
 
@@ -315,7 +316,14 @@ public class Query
 
         // get user properties for reference
         var userId = UserController.GetCurrentUserId(context);
+        var organization = UserController.GetCurrentOrganization(context, onTrackDBContext);
         var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
+
+        // check if the organization subscription plan allows for insight analytics
+        if (!organization.SubscriptionPlan.CanUseInsightAnalytics) {
+            Console.WriteLine($"[+] organization does not have insight analytics in their subscription plan!");
+            throw new Exception("unauthorized");
+        }
 
         // select where we want to get stuff from
         var query =
@@ -400,7 +408,14 @@ public class Query
 
         // get user properties for reference
         var userId = UserController.GetCurrentUserId(context);
+        var organization = UserController.GetCurrentOrganization(context, onTrackDBContext);
         var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
+
+        // check if the organization subscription plan allows for insight analytics
+        if (!organization.SubscriptionPlan.CanUseInsightAnalytics) {
+            Console.WriteLine($"[+] organization does not have insight analytics in their subscription plan!");
+            throw new Exception("unauthorized");
+        }
 
         // select where we want to get stuff from
         var query =
