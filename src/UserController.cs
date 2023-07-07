@@ -77,6 +77,10 @@ public class UserController {
 	public static bool CanUserDo(OnTrackDBContext onTrackDBContext, Guid userId, Guid organizationId, string action) {
 		return GetUserOrganizationalRoles(onTrackDBContext, userId, organizationId).SelectMany(role => rolePolicies[role]).Contains(action);
 	}
+
+	public static OrganizationalSubscriptionPlan GetSubscriptionPlanByName(OnTrackDBContext onTrackDBContext, String name) {
+		return onTrackDBContext.OrganizationalSubscriptionPlans.First(plan => plan.PlanName == name);
+	}
 }
 
 

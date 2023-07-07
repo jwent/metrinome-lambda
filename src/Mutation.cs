@@ -98,9 +98,9 @@ public class Mutation {
 			};
 		var newOrganization = new UserOrganization {
 				Id=Guid.NewGuid(),
-				OwnerId=newUser.Id,
+				CreatorId=newUser.Id,
 				CreatedAt=DateTime.Now,
-				SubscriptionPlan="StarterPlan",
+				SubscriptionPlan=UserController.GetSubscriptionPlanByName(onTrackDBContext, "StarterPlan"),
 			};
 		newUser.Organization = newOrganization;
 		var newRole = new UserOrganizationalRoleAssociation {
@@ -151,6 +151,7 @@ public class Mutation {
 		var userId = UserController.GetCurrentUserId(context);
 		var user = onTrackDBContext.Users
 			.Include(u => u.Organization.Users)
+			.Include(u => u.Organization.SubscriptionPlan)
 			.First(u => u.Id == userId);
 
 		// check user AuthZ
@@ -171,7 +172,7 @@ public class Mutation {
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 
 		// check if the organization subscription plan allows for this additional user
-		if (user.Organization.Users.Count >= OnTrackConfig.onTrackSubscriptionPlans[user.Organization.SubscriptionPlan].usersLimitPerPlan) {
+		if (user.Organization.Users.Count >= user.Organization.SubscriptionPlan.UsersLimitPerPlan) {
 			Console.WriteLine($"[+] organization has reached users limit! denied!");
 			return new AddUserResponse { Error="Your subscription plan has reached user limit." };
 		}
@@ -262,13 +263,14 @@ public class Mutation {
 		var user = onTrackDBContext.Users
 			.Include(u => u.Organization.OrganizationalTrackers)
 			.ThenInclude(t => t.Campaigns)
+			.Include(u => u.Organization.SubscriptionPlan)
 			.First(u => u.Id == userId);
 
 		Console.WriteLine($"[+] searching user trackers by userId: {userId}");
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
 		// check if the organization subscription plan allows for this additional campaign
-		if (user.Organization.OrganizationalTrackers[0].Campaigns.Count >= OnTrackConfig.onTrackSubscriptionPlans[user.Organization.SubscriptionPlan].campaignsLimitPerPlan) {
+		if (user.Organization.OrganizationalTrackers[0].Campaigns.Count >= user.Organization.SubscriptionPlan.CampaignsLimitPerPlan) {
 			Console.WriteLine($"[+] organization has reached campaigns limit! denied!");
 			return null;
 		}

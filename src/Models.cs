@@ -38,14 +38,23 @@ public class UserOrganizationalRoleAssociation {
 
 public class UserOrganization {
 	public Guid Id { get; set; }
-	public Guid OwnerId { get; set; }
+	public Guid CreatorId { get; set; }
 	public DateTime CreatedAt { get; set; }
-	public String SubscriptionPlan { get; set; }
+	public OrganizationalSubscriptionPlan SubscriptionPlan { get; set; }
 
 	[InverseProperty("Organization")]
 	public List<User> Users { get; set; }
 	[InverseProperty("Organization")]
 	public List<UserTracker> OrganizationalTrackers { get; set; }
+}
+
+public class OrganizationalSubscriptionPlan {
+	public Guid Id { get; set; }
+	public string PlanName { get; set; }
+
+	public int UsersLimitPerPlan { get; set; }
+	public int CampaignsLimitPerPlan { get; set; }
+	public bool CanUseInsightAnalytics { get; set; }
 }
 
 public class UserTracker {
