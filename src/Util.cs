@@ -1,9 +1,12 @@
+using System.Text;
+using System.Text.Json.Nodes;
 using System.Security.Claims;
 using GraphQL;
 using GraphQL.Authorization;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http;
 
 public class Util {
 
@@ -64,6 +67,27 @@ public class Util {
 		javascriptStub = Regex.Replace(javascriptStub, @"\r?\n\s+", "");
 
 		return javascriptStub;
+	}
+
+	private static readonly HttpClient httpClient = new HttpClient();
+
+	public static async Task<string> RequestPaymentCheckout(string plan) {
+		var api_key = ValueOrDie(Environment.GetEnvironmentVariable("INTERNAL_PAYMENT_API_KEY_HASH"));
+		var endpoint = ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_PAYMENT_ENDPOINT_URL"));
+
+		Console.WriteLine("[i] sending payment request to " + endpoint);
+		var response = await httpClient.PostAsync(endpoint, new StringContent(
+				"{\"action\":\"/payment-lambda/start-checkout\",\"plan\":\"" + plan + "\",\"internal_api_key_hash\":\"" + api_key + "\"}",
+				Encoding.UTF8, "application/json"));
+		Console.WriteLine("[+] payment response: " + response);
+
+		var responseString = await response.Content.ReadAsStringAsync();
+		Console.WriteLine("[+] payment responseString: " + responseString);
+
+		var root = JsonValue.Parse(responseString);
+		Console.WriteLine("[+] result id: " + root["id"].ToString());
+
+		return root["url"].ToString();
 	}
 
 	public static T ValueOrDie<T>(T? value) {

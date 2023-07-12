@@ -186,6 +186,10 @@ public class AddUserResponse {
 public class SuccessResponse {
 	public bool? Success { get; set; }
 }
+public class CheckoutResponse {
+	public bool? Success { get; set; }
+	public string? Url { get; set; }
+}
 
 
 public class PostbackCodes {

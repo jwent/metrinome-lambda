@@ -66,6 +66,33 @@ public class Mutation {
 		return new SuccessResponse { Success=true };
 	}
 
+	[Authorize(Policy = "CustomerPolicy")]
+	public static async Task<CheckoutResponse> requestCheckout(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string plan) {
+		var userId = UserController.GetCurrentUserId(context);
+		var user = onTrackDBContext.Users
+			// .Include(u => u.Organization.Users)
+			// .Include(u => u.Organization.SubscriptionPlan)
+			.First(u => u.Id == userId);
+
+		var url = await Util.RequestPaymentCheckout(plan);
+
+		return new CheckoutResponse { Success=true, Url=url };
+	}
+
+	[Authorize(Policy = "CustomerPolicy")]
+	public static SuccessResponse checkPayment(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
+		var userId = UserController.GetCurrentUserId(context);
+		var user = onTrackDBContext.Users
+			.Include(u => u.Organization)
+			// .Include(u => u.Organization.SubscriptionPlan)
+			.First(u => u.Id == userId);
+
+		user.Organization.SubscriptionPlan = UserController.GetSubscriptionPlanByName(onTrackDBContext, "StarterPlan");
+		onTrackDBContext.SaveChanges();
+
+		return new SuccessResponse { Success=true };
+	}
+
 	public static AddUserResponse addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password) {
 		// find a user by email
 		var possibleUser = onTrackDBContext.Users
@@ -100,7 +127,8 @@ public class Mutation {
 				Id=Guid.NewGuid(),
 				CreatorId=newUser.Id,
 				CreatedAt=DateTime.Now,
-				SubscriptionPlan=UserController.GetSubscriptionPlanByName(onTrackDBContext, "StarterPlan"),
+				SubscriptionPlan=null,
+				// SubscriptionPlan=UserController.GetSubscriptionPlanByName(onTrackDBContext, "StarterPlan"),
 			};
 		newUser.Organization = newOrganization;
 		var newRole = new UserOrganizationalRoleAssociation {
