@@ -1,11 +1,17 @@
+using System.IO;
 using System.Text;
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
 
 public class EmailController {
 	public static async Task<string?> SendEmail(string toEmail, string emailSubject, string emailHtmlContent) {
-		Console.WriteLine($"[i] sending email to address: {toEmail}");
+		if ((Environment.GetEnvironmentVariable("ONTRACK_STAGE") ?? "LOCALTEST") == "LOCALTEST") {
+			Console.WriteLine($"[!] MOCK email to address: {toEmail}, writing to ./mock_ses_email.txt");
+			File.WriteAllText("mock_ses_email.txt", $"to:{toEmail}\nsub:{emailSubject}\n{emailHtmlContent}\n\n\n");
+			return null;
+		}
 
+		Console.WriteLine($"[i] sending email to address: {toEmail}");
 		try {
 
 			var client = new AmazonSimpleEmailServiceClient(Amazon.RegionEndpoint.USEast1);
