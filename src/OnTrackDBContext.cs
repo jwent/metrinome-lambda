@@ -25,21 +25,24 @@ public class OnTrackDBContext : DbContext {
 	protected override void OnModelCreating(ModelBuilder modelBuilder) {
 		modelBuilder.Entity<OrganizationalSubscriptionPlan>().HasData(new OrganizationalSubscriptionPlan {
 				Id=Guid.NewGuid(),
-				PlanName="StarterPlan",
+				PlanKey="starter_plan",
+				PlanName="OnTrack Starter Plan",
 				UsersLimitPerPlan=1,
 				CampaignsLimitPerPlan=3,
 				CanUseInsightAnalytics=false,
 			},
 			new OrganizationalSubscriptionPlan {
 				Id=Guid.NewGuid(),
-				PlanName="PremiumPlan",
+				PlanKey="premium_plan",
+				PlanName="OnTrack Premium Plan",
 				UsersLimitPerPlan=2,
 				CampaignsLimitPerPlan=7,
 				CanUseInsightAnalytics=true,
 			},
 			new OrganizationalSubscriptionPlan {
 				Id=Guid.NewGuid(),
-				PlanName="EnterprisePlan",
+				PlanKey="enterprise_plan",
+				PlanName="OnTrack Enterprise Plan",
 				UsersLimitPerPlan=1000,
 				CampaignsLimitPerPlan=10000,
 				CanUseInsightAnalytics=true,

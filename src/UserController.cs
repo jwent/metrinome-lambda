@@ -79,8 +79,8 @@ public class UserController {
 		return GetUserOrganizationalRoles(onTrackDBContext, userId, organizationId).SelectMany(role => rolePolicies[role]).Contains(action);
 	}
 
-	public static OrganizationalSubscriptionPlan GetSubscriptionPlanByName(OnTrackDBContext onTrackDBContext, String name) {
-		return onTrackDBContext.OrganizationalSubscriptionPlans.First(plan => plan.PlanName == name);
+	public static OrganizationalSubscriptionPlan GetSubscriptionPlanByKey(OnTrackDBContext onTrackDBContext, String plankey) {
+		return onTrackDBContext.OrganizationalSubscriptionPlans.First(plan => plan.PlanKey == plankey);
 	}
 }
 

@@ -66,16 +66,32 @@ public class Mutation {
 		return new SuccessResponse { Success=true };
 	}
 
+	private static List<string> SubscriptionPlanOptions = new List<string> {
+		"starter_plan",
+		"premium_plan",
+		"enterprise_plan",
+	};
+
 	[Authorize(Policy = "CustomerPolicy")]
 	public static async Task<CheckoutResponse> requestCheckout(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string plan) {
 		var userId = UserController.GetCurrentUserId(context);
 		var user = onTrackDBContext.Users
-			// .Include(u => u.Organization.Users)
-			// .Include(u => u.Organization.SubscriptionPlan)
+			.Include(u => u.Organization.SubscriptionPlan)
 			.First(u => u.Id == userId);
 
+		// check that the plan is valid
+		if (!SubscriptionPlanOptions.Contains(plan))
+			return new CheckoutResponse { Success=false, Error="invalid plan" };
+
+		// TODO: REMOVE
+		user.Organization.SubscriptionPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, plan);
+		onTrackDBContext.SaveChanges();
+		// TODO: REMOVE
+
+		// query the payment api for a checkout url
 		var url = await Util.RequestPaymentCheckout(plan);
 
+		// return the checkout url for the customer
 		return new CheckoutResponse { Success=true, Url=url };
 	}
 
@@ -83,11 +99,10 @@ public class Mutation {
 	public static SuccessResponse checkPayment(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
 		var userId = UserController.GetCurrentUserId(context);
 		var user = onTrackDBContext.Users
-			.Include(u => u.Organization)
-			// .Include(u => u.Organization.SubscriptionPlan)
+			.Include(u => u.Organization.SubscriptionPlan)
 			.First(u => u.Id == userId);
 
-		user.Organization.SubscriptionPlan = UserController.GetSubscriptionPlanByName(onTrackDBContext, "StarterPlan");
+		user.Organization.SubscriptionPlan = user.Organization.SubscriptionPlan ?? UserController.GetSubscriptionPlanByKey(onTrackDBContext, "starter_plan");
 		onTrackDBContext.SaveChanges();
 
 		return new SuccessResponse { Success=true };
@@ -128,7 +143,6 @@ public class Mutation {
 				CreatorId=newUser.Id,
 				CreatedAt=DateTime.Now,
 				SubscriptionPlan=null,
-				// SubscriptionPlan=UserController.GetSubscriptionPlanByName(onTrackDBContext, "StarterPlan"),
 			};
 		newUser.Organization = newOrganization;
 		var newRole = new UserOrganizationalRoleAssociation {

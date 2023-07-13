@@ -50,6 +50,7 @@ public class UserOrganization {
 
 public class OrganizationalSubscriptionPlan {
 	public Guid Id { get; set; }
+	public string PlanKey { get; set; }
 	public string PlanName { get; set; }
 
 	public int UsersLimitPerPlan { get; set; }
