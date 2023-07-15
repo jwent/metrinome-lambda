@@ -7,6 +7,10 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using Microsoft.IdentityModel.Tokens;
+
 
 public class Util {
 
@@ -84,15 +88,35 @@ public class Util {
 		var responseString = await response.Content.ReadAsStringAsync();
 		Console.WriteLine("[+] payment responseString: " + responseString);
 
-		var root = JsonValue.Parse(responseString);
-		Console.WriteLine("[+] result id: " + root["id"].ToString());
+		var root = ValueOrDie(JsonValue.Parse(responseString));
+		Console.WriteLine("[+] result id: " + root["id"]?.ToString());
 
-		return root["url"].ToString();
+		return ValueOrDie(root["url"]).ToString();
 	}
 
 	public static T ValueOrDie<T>(T? value) {
 		if (value == null)
 			throw new Exception("[!] missing critical value!");
 		return value;
+	}
+
+	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Util.ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY"))));
+	public static string SignAuthToken(User user) {
+		// create a claim
+		var claims = new List<Claim> {
+			new Claim("id", user.Id.ToString()),
+			new Claim("role", "Customer")
+		};
+		// sign it
+		var signingCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+		var token = new JwtSecurityToken(
+			Environment.GetEnvironmentVariable("ONTRACK_SITE_URL"),
+			Environment.GetEnvironmentVariable("ONTRACK_SITE_URL"),
+			claims,
+			expires: DateTime.Now.AddDays(1),
+			signingCredentials: signingCredentials
+		);
+		// create token
+		return new JwtSecurityTokenHandler().WriteToken(token);
 	}
 }

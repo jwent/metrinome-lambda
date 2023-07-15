@@ -25,7 +25,7 @@ public class EmailController {
 					},
 					Subject = new Content { Charset = "UTF-8", Data = emailSubject }
 				},
-				Source = "mirror12k+ontracktest@gmail.com", // "noreply@app.ontrackanalytics.com",
+				Source = "noreply@app.ontrackanalytics.com",
 			});
 			Console.WriteLine($"[+] SES messageId: {res.MessageId}");
 			return res.MessageId;

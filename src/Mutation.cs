@@ -1,18 +1,13 @@
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Text;
 using GraphQL;
 using GraphQL.Authorization;
 
 public class Mutation {
-	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Util.ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY"))));
-
 	public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
 		// find a user by email and password
 		var user = onTrackDBContext.Users
-				.Where(u => u.Email == email && u.UserState == "Active")
+				.Where(u => u.Email == email)
 				.FirstOrDefault();
 
 		// verify that we found a user
@@ -21,26 +16,15 @@ public class Mutation {
 		// verify password
 		if (!Util.VerifyHash(password, user.Password))
 			return new LoginUserResponse { Error="Invalid email or password." };
-
-		// create a claim
-		var claims = new List<Claim> {
-			new Claim("id", user.Id.ToString()),
-			new Claim("role", "Customer")
-		};
-		// sign it
-		var signingCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-		var token = new JwtSecurityToken(
-			"issuer",
-			"audience",
-			claims,
-			expires: DateTime.Now.AddDays(1),
-			signingCredentials: signingCredentials
-		);
-		// create token
-		var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
+		// if they haven't verified email yet, tell them
+		if (user.UserState == "Invited")
+			return new LoginUserResponse { Error="Please verify your email before logging in." };
+		// if they don't have an active account, no entry
+		if (user.UserState != "Active")
+			return new LoginUserResponse { Error="Account disabled." };
 
 		// return token
-		return new LoginUserResponse { BearerToken=tokenString };
+		return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
 	}
 
 	public static SuccessResponse forgotPassword([FromServices] OnTrackDBContext onTrackDBContext, string email) {
@@ -108,7 +92,7 @@ public class Mutation {
 		return new SuccessResponse { Success=true };
 	}
 
-	public static AddUserResponse addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password) {
+	public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password) {
 		// find a user by email
 		var possibleUser = onTrackDBContext.Users
 				.Where(u => u.Email == email)
@@ -129,14 +113,16 @@ public class Mutation {
 		// salt and hash the new password
 		var passwordHash = Util.SaltAndHash(password);
 
+		// generate a random token so that they can register
+		var randomResetToken = Util.GetSecureRandomString(64); // 256 bits of security
 		// create both the user, their organization, and the role between them
 		var newUser = new User {
 				Id=Guid.NewGuid(),
 				Email=email,
 				Password=passwordHash,
 				CreatedAt=DateTime.Now,
-				ResetPasswordToken="",
-				UserState="Active",
+				ResetPasswordToken=randomResetToken,
+				UserState="Invited",
 			};
 		var newOrganization = new UserOrganization {
 				Id=Guid.NewGuid(),
@@ -183,6 +169,10 @@ public class Mutation {
 		});
 		onTrackDBContext.SaveChanges();
 
+		// email the user to get started
+		await EmailController.SendEmail(email, "Please verify your OnTrack Analytics account",
+				$"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}VerifyMainUserEmail?resetkey={randomResetToken}'>this link</a> to verify your account and use the platform.");
+
 		// return is pointless
 		return new AddUserResponse { Id=newUser.Id };
 	}
@@ -214,7 +204,7 @@ public class Mutation {
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 
 		// check if the organization subscription plan allows for this additional user
-		if (user.Organization.Users.Count >= user.Organization.SubscriptionPlan.UsersLimitPerPlan) {
+		if (user.Organization.SubscriptionPlan == null || user.Organization.Users.Count >= user.Organization.SubscriptionPlan.UsersLimitPerPlan) {
 			Console.WriteLine($"[+] organization has reached users limit! denied!");
 			return new AddUserResponse { Error="Your subscription plan has reached user limit." };
 		}
@@ -253,7 +243,7 @@ public class Mutation {
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 		}
 
-		await EmailController.SendEmail(email, "You've been invited to an On Track Analytics organization",
+		await EmailController.SendEmail(email, "You've been invited to an OnTrack Analytics organization",
 				$"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}SignUpOrgUser?resetkey={randomResetToken}'>this link</a> to register your account and join the organization.");
 
 		// response is only for success
@@ -261,6 +251,9 @@ public class Mutation {
 	}
 
 	public static AddUserResponse registerNewOrganizationalUser(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken, string fullname, string password) {
+		// assert that the resetToken is not invalid
+		if (resetToken.Length < 8)
+			return new AddUserResponse { Error="Invalid or missing user." };
 		
 		// find a user by email
 		var newUser = onTrackDBContext.Users
@@ -299,6 +292,31 @@ public class Mutation {
 		return new AddUserResponse { Id=newUser.Id };
 	}
 
+	public static LoginUserResponse verifyUserEmail(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken) {
+		// assert that the resetToken is not invalid
+		if (resetToken.Length < 8)
+			return new LoginUserResponse { Error="Invalid or missing user." };
+		
+		// find a user by email
+		var user = onTrackDBContext.Users
+				.Where(u => u.UserState == "Invited" && u.ResetPasswordToken == resetToken)
+				.FirstOrDefault();
+		if (user == null) {
+			Console.WriteLine("[!] new user not found");
+			return new LoginUserResponse { Error="Invalid or missing user." };
+		}
+
+		// set properties
+		user.UserState = "Active";
+		user.ResetPasswordToken = ""; // clear the reset token to prevent reuse
+
+		// save the properties
+		onTrackDBContext.SaveChanges();
+
+		// return token
+		return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
+	}
+
 	[Authorize(Policy = "CustomerPolicy")]
 	public static Guid? createCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, TrackingCampaignSubmission campaign) {
 		var userId = UserController.GetCurrentUserId(context);
@@ -312,7 +330,7 @@ public class Mutation {
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
 		// check if the organization subscription plan allows for this additional campaign
-		if (user.Organization.OrganizationalTrackers[0].Campaigns.Count >= user.Organization.SubscriptionPlan.CampaignsLimitPerPlan) {
+		if (user.Organization.SubscriptionPlan == null || user.Organization.OrganizationalTrackers[0].Campaigns.Count >= user.Organization.SubscriptionPlan.CampaignsLimitPerPlan) {
 			Console.WriteLine($"[+] organization has reached campaigns limit! denied!");
 			return null;
 		}

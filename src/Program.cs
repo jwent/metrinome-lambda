@@ -33,8 +33,8 @@ builder.Services
 			ValidateAudience = true,
 			ValidateIssuer = true,
 			ValidateIssuerSigningKey = true,
-			ValidAudience = "audience",
-			ValidIssuer = "issuer",
+			ValidAudience = Environment.GetEnvironmentVariable("ONTRACK_SITE_URL"),
+			ValidIssuer = Environment.GetEnvironmentVariable("ONTRACK_SITE_URL"),
 			RequireSignedTokens = false,
 			IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Util.ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY"))))
         };
