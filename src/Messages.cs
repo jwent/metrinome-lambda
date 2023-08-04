@@ -40,24 +40,26 @@ public class TrackingCampaignSubmission {
 
 
 public class TrackingCampaignData {
-	public TrackingCampaignData(TrackingCampaign campaign, int Clicks, int UniqueClicks, int BotClicks, int Conversions, int DesktopClicks, int? Count=null) {
-		this.Id = campaign.Id;
-		this.CreatedAt = campaign.CreatedAt;
-		this.Platform = campaign.Platform;
-		this.CampaignName = campaign.CampaignName;
-		this.CampaignBudget = campaign.CampaignBudget;
-		this.ConversionValue = campaign.ConversionValue;
-		this.WebsiteDomain = campaign.WebsiteDomain;
-		this.CartPageURL = campaign.CartPageURL;
-		this.LandingPageURL = campaign.LandingPageURL;
-		this.PrivacyPageURL = campaign.PrivacyPageURL;
-		this.Clicks = Clicks;
-		this.UniqueClicks = UniqueClicks;
-		this.BotClicks = BotClicks;
-		this.Conversions=Conversions;
-		this.DesktopClicks=DesktopClicks;
-		this.Count=Count;
-	}
+    public TrackingCampaignData(TrackingCampaign campaign, int Clicks, int UniqueClicks, int BotClicks, int Conversions, int DesktopClicks, TrackingCampaignExtraProperty ExtraCampaignType, int? Count = null)
+    {
+        this.Id = campaign.Id;
+        this.CreatedAt = campaign.CreatedAt;
+        this.Platform = campaign.Platform;
+        this.CampaignName = campaign.CampaignName;
+        this.CampaignBudget = campaign.CampaignBudget;
+        this.ConversionValue = campaign.ConversionValue;
+        this.WebsiteDomain = campaign.WebsiteDomain;
+        this.CartPageURL = campaign.CartPageURL;
+        this.LandingPageURL = campaign.LandingPageURL;
+        this.PrivacyPageURL = campaign.PrivacyPageURL;
+        this.Clicks = Clicks;
+        this.UniqueClicks = UniqueClicks;
+        this.BotClicks = BotClicks;
+        this.Conversions = Conversions;
+        this.DesktopClicks = DesktopClicks;
+        this.Count = Count;
+        this.CampaignType = ExtraCampaignType.PropertyValue;
+    }
 
 	public Guid Id { get; set; }
 	public DateTime? CreatedAt { get; set; }
@@ -77,7 +79,8 @@ public class TrackingCampaignData {
 	public int? BotClicks { get; set; }
 	public int? Conversions { get; set; }
 	public int? DesktopClicks { get; set; }
-	public int? Count { get; set; }
+    public int? Count { get; set; }
+    public string? CampaignType { get; set; }
 }
 
 public class TrackerClickData {
@@ -150,7 +153,8 @@ public class Clicks
 public class Location
 {
 	public string? City { get; set; }
-	public int Count { get; set; }
+	public int ClickCount { get; set; }
+	public int ConversionCount { get; set; }
 }
 public class ChartDatas
 {

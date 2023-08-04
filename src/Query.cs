@@ -113,23 +113,27 @@ public class Query
 
         IOrderedQueryable<TrackingCampaign> campaigns = (IOrderedQueryable<TrackingCampaign>)onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Organization.Id == organizationId);
         int count = campaigns.Count();
-        List<TrackingCampaign> campaignList;
         if (createdAt.HasValue)
             campaigns = campaigns.Where(e => e.CreatedAt < createdAt).OrderByDescending(c => c.CreatedAt);
         else
             campaigns = campaigns.OrderByDescending(c => c.CreatedAt);
             
         if (length > 0)
-            campaignList = campaigns.Take(length).ToList();
-        else
-            campaignList = campaigns.ToList();
+            campaigns = (IOrderedQueryable<TrackingCampaign>)campaigns.Take(length);
+        
+        var campaignList=campaigns.Join(onTrackDBContext.TrackingCampaignExtraProperties,
+                    campaign => new { campaign.Id, PropertyKey = "CampaignType" },
+                    extra => new { extra.Parent.Id, extra.PropertyKey },
+                    (campaign, extraCampaignType) => new { campaign, extraCampaignType }
+                ).ToList();
 
-        var campaign_datas = campaignList.Select(e => new TrackingCampaignData(e,
-                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.Id).Count(),
-                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
-                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.Id && c.IsBotClick == true).Count(),
-                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.Id && c.Conversion == true).Count(),
-                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.Id && c.Conversion == true && c.IsDesktop == true).Count()))
+        var campaign_datas = campaignList.Select(e => new TrackingCampaignData(e.campaign,
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id && c.IsBotClick == true).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id && c.Conversion == true).Count(),
+                onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id && c.Conversion == true && c.IsDesktop == true).Count(),
+                e.extraCampaignType))
         .ToList();
         return new Campaigns(campaign_datas, count);
     }
@@ -191,16 +195,22 @@ public class Query
 
         var campaignGuid = Guid.Parse(campaignId);
         Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-        var existingCampaign = onTrackDBContext.TrackingCampaigns.First(e => e.Id == campaignGuid && e.ParentTracker.Organization.Id == organizationId);
+        var existingCampaign = onTrackDBContext.TrackingCampaigns.Join(onTrackDBContext.TrackingCampaignExtraProperties,
+                    campaign => new { campaign.Id, PropertyKey = "CampaignType" },
+                    extra => new { extra.Parent.Id, extra.PropertyKey },
+                    (campaign, extraCampaignType) => new { campaign, extraCampaignType }
+                ).First(e => e.campaign.Id == campaignGuid && e.campaign.ParentTracker.Organization.Id == organizationId);
+
         if (existingCampaign == null)
             throw new Exception("campaign not found!");
 
-        var campaignData = new TrackingCampaignData(existingCampaign,
-                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id).Count(),
-                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
-                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.IsBotClick == true).Count(),
-                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true).Count(),
-                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.Id && c.Conversion == true && c.IsDesktop == true).Count());
+        var campaignData = new TrackingCampaignData(existingCampaign.campaign,
+                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.campaign.Id).Count(),
+                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.campaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
+                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.campaign.Id && c.IsBotClick == true).Count(),
+                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.campaign.Id && c.Conversion == true).Count(),
+                    onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.campaign.Id && c.Conversion == true && c.IsDesktop == true).Count(),
+                    existingCampaign.extraCampaignType);
 
         var myClicks = onTrackDBContext.TrackerClicks
                 .Where(e => e.Campaign != null && e.Campaign.Id == campaignGuid)
@@ -227,28 +237,15 @@ public class Query
                 .Select(combined => new TrackerClickData(combined.click, combined.extraCountry, combined.extraRegion, combined.extraCity))
                 .ToList();
 
+        var myClicksData= myClicks
+        .Select(combined => new TrackerClickData(combined.click, combined.extraCountry, combined.extraRegion, combined.extraCity)).ToList();
 
-        var myConversions = onTrackDBContext.TrackerClicks
-                .Where(e => e.Campaign.Id == campaignGuid && e.Conversion.Value)
-                .Join(onTrackDBContext.TrackerClickExtraProperties,
-                    click => new { click.Id, PropertyKey = "ip_country" },
-                    extra => new { extra.ClickParent.Id, extra.PropertyKey },
-                    (click, extraCountry) => new { click, extraCountry }
-                )
-                .Join(onTrackDBContext.TrackerClickExtraProperties,
-                    combined => new { combined.click.Id, PropertyKey = "ip_region" },
-                    extra => new { extra.ClickParent.Id, extra.PropertyKey },
-                    (combined, extraRegion) => new { combined.click, combined.extraCountry, extraRegion }
-                )
-                .Join(onTrackDBContext.TrackerClickExtraProperties,
-                    combined => new { combined.click.Id, PropertyKey = "ip_city" },
-                    extra => new { extra.ClickParent.Id, extra.PropertyKey },
-                    (combined, extraCity) => new { combined.click, combined.extraCountry, combined.extraRegion, extraCity }
-                );
-        var topLocations = myConversions
-        .Select(combined => new TrackerClickData(combined.click, combined.extraCountry, combined.extraRegion, combined.extraCity)).ToList()
-        .GroupBy(p => p.City).Select(m => new Location { City = m.Key, Count = m.Count() }).OrderByDescending(s => s.Count).Take(5).ToList();
-
+        var topLocationsByClicks = myClicksData
+        .GroupBy(p => p.City).Select(m => new Location { City = m.Key, ClickCount = m.Count() }).OrderByDescending(s => s.ClickCount).Take(10).ToList();
+        var conversionCountByCity = myClicksData.Where(t => t.Conversion == true).GroupBy(p => p.City).Select(m => new Location { City = m.Key, ConversionCount = m.Count() }).OrderByDescending(s => s.ConversionCount).ToList();
+        var topLocations = topLocationsByClicks.GroupJoin(conversionCountByCity, click => click.City, conversion => conversion.City,
+    (click, locations) => new Location { City = click.City, ClickCount = click.ClickCount, ConversionCount = locations.FirstOrDefault() != null ? locations.FirstOrDefault().ConversionCount : 0 }).ToList();
+    
         return new TrackingCampaignDetails(campaignData, new Clicks(clicksList, count), new ChartDatas(topLocations));
     }
 
