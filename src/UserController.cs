@@ -82,6 +82,18 @@ public class UserController {
 	public static OrganizationalSubscriptionPlan GetSubscriptionPlanByKey(OnTrackDBContext onTrackDBContext, String plankey) {
 		return onTrackDBContext.OrganizationalSubscriptionPlans.First(plan => plan.PlanKey == plankey);
 	}
+
+	public static string? ValidatePasswordCreation(string password) {
+		if (password.Length < 12)
+			return "Password too short.";
+		if (!password.Any(char.IsUpper))
+			return "Password must contain an uppercase letter.";
+		if (!password.Any(char.IsLower))
+			return "Password must contain a lowercase letter.";
+		if (!password.Any(char.IsDigit))
+			return "Password must contain a number.";
+		return null;
+	}
 }
 
 

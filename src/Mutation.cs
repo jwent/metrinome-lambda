@@ -106,8 +106,9 @@ public class Mutation {
 			return new AddUserResponse { Error="Invalid fullname." };
 		if (email.Length > 128)
 			return new AddUserResponse { Error="Invalid or duplicate email." };
-		if (password.Length < 8)
-			return new AddUserResponse { Error="Password too short." };
+		var passwordError = UserController.ValidatePasswordCreation(password);
+		if (passwordError != null)
+			return new AddUserResponse { Error=passwordError };
 
 		// salt and hash the new password
 		var passwordHash = Util.SaltAndHash(password);
@@ -266,8 +267,9 @@ public class Mutation {
 		// assert stuff
 		if (fullname.Length > 128)
 			return new AddUserResponse { Error="Invalid fullname." };
-		if (password.Length < 8)
-			return new AddUserResponse { Error="Password too short." };
+		var passwordError = UserController.ValidatePasswordCreation(password);
+		if (passwordError != null)
+			return new AddUserResponse { Error=passwordError };
 
 		// salt and hash the new password
 		var passwordHash = Util.SaltAndHash(password);
