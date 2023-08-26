@@ -9,16 +9,15 @@ public class Mutation {
 		var user = onTrackDBContext.Users
 				.Where(u => u.Email == email)
 				.FirstOrDefault();
-
 		// verify that we found a user
 		if (user == null)
-			return new LoginUserResponse { Error="Invalid email or password." };
-		// verify password
-		if (!Util.VerifyHash(password, user.Password))
 			return new LoginUserResponse { Error="Invalid email or password." };
 		// if they haven't verified email yet, tell them
 		if (user.UserState == "Invited")
 			return new LoginUserResponse { Error="Please verify your email before logging in." };
+		// verify password
+		if (!Util.VerifyHash(password, user.Password))
+			return new LoginUserResponse { Error="Invalid email or password." };
 		// if they don't have an active account, no entry
 		if (user.UserState != "Active")
 			return new LoginUserResponse { Error="Account disabled." };
