@@ -60,8 +60,8 @@ public class Query
             const rpr = window.btoa(document.referrer);
             (function(){
                 fetch('" + endpoint + "?t=" + userTracker.Id.ToString() + @"&r='+rpr+'&u='+rpu)
-                    .then(r => r.json())
-                    .then(d => sessionStorage.setItem('clid',d.clid))
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) { sessionStorage.setItem('clid', d.clid); });
                 })();
         }
     })()
@@ -107,16 +107,16 @@ public class Query
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static Campaigns myCampaigns(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, DateTime? createdAt, int length=10) {
+    public static Campaigns myCampaigns(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, DateTime? createdAt, int length) {
         var userId = UserController.GetCurrentUserId(context);
         var organizationId = UserController.GetCurrentOrganizationId(context, onTrackDBContext);
 
         IOrderedQueryable<TrackingCampaign> campaigns = (IOrderedQueryable<TrackingCampaign>)onTrackDBContext.TrackingCampaigns.Where(e => e.ParentTracker.Organization.Id == organizationId);
         int count = campaigns.Count();
         if (createdAt.HasValue)
-            campaigns = campaigns.Where(e => e.CreatedAt < createdAt).OrderByDescending(c => c.CreatedAt);
+            campaigns = campaigns.Where(e => e.CreatedAt > createdAt).OrderBy(c => c.CreatedAt);
         else
-            campaigns = campaigns.OrderByDescending(c => c.CreatedAt);
+            campaigns = campaigns.OrderBy(c => c.CreatedAt);
             
         if (length > 0)
             campaigns = (IOrderedQueryable<TrackingCampaign>)campaigns.Take(length);
