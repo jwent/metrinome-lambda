@@ -30,6 +30,7 @@ public class OnTrackDBContext : DbContext {
 				UsersLimitPerPlan=1,
 				CampaignsLimitPerPlan=3,
 				CanUseInsightAnalytics=false,
+				IsFreePlan=false,
 			},
 			new OrganizationalSubscriptionPlan {
 				Id=Guid.NewGuid(),
@@ -38,6 +39,7 @@ public class OnTrackDBContext : DbContext {
 				UsersLimitPerPlan=2,
 				CampaignsLimitPerPlan=7,
 				CanUseInsightAnalytics=true,
+				IsFreePlan=false,
 			},
 			new OrganizationalSubscriptionPlan {
 				Id=Guid.NewGuid(),
@@ -46,6 +48,16 @@ public class OnTrackDBContext : DbContext {
 				UsersLimitPerPlan=1000,
 				CampaignsLimitPerPlan=10000,
 				CanUseInsightAnalytics=true,
+				IsFreePlan=false,
+			},
+			new OrganizationalSubscriptionPlan {
+				Id=Guid.NewGuid(),
+				PlanKey="free_enterprise_plan",
+				PlanName="OnTrack Free Plan",
+				UsersLimitPerPlan=1000,
+				CampaignsLimitPerPlan=10000,
+				CanUseInsightAnalytics=true,
+				IsFreePlan=true,
 			});
 
 		base.OnModelCreating(modelBuilder);

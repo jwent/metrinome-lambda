@@ -83,6 +83,10 @@ public class UserController {
 		return onTrackDBContext.OrganizationalSubscriptionPlans.First(plan => plan.PlanKey == plankey);
 	}
 
+	public static OrganizationalSubscriptionPlan? GetSubscriptionPlanByFree(OnTrackDBContext onTrackDBContext) {
+		return onTrackDBContext.OrganizationalSubscriptionPlans.FirstOrDefault(plan => plan.IsFreePlan);
+	}
+
 	public static string? ValidatePasswordCreation(string password) {
 		if (password.Length < 12)
 			return "Password too short.";

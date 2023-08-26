@@ -56,6 +56,7 @@ public class OrganizationalSubscriptionPlan {
 	public int UsersLimitPerPlan { get; set; }
 	public int CampaignsLimitPerPlan { get; set; }
 	public bool CanUseInsightAnalytics { get; set; }
+	public bool IsFreePlan { get; set; }
 }
 
 public class UserTracker {

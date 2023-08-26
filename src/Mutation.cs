@@ -301,6 +301,7 @@ public class Mutation {
 		// find a user by email
 		var user = onTrackDBContext.Users
 				.Where(u => u.UserState == "Invited" && u.ResetPasswordToken == resetToken)
+				.Include(u => u.Organization)
 				.FirstOrDefault();
 		if (user == null) {
 			Console.WriteLine("[!] new user not found");
@@ -310,6 +311,14 @@ public class Mutation {
 		// set properties
 		user.UserState = "Active";
 		user.ResetPasswordToken = ""; // clear the reset token to prevent reuse
+
+		// FREE PLAN SYSTEM
+		var freePlan = UserController.GetSubscriptionPlanByFree(onTrackDBContext);
+		if (freePlan != null) {
+			Console.WriteLine($"[+] adding user free plan: {freePlan.Id}");
+			user.Organization.SubscriptionPlan = freePlan;
+		}
+		// END FREE PLAN SYSTEM
 
 		// save the properties
 		onTrackDBContext.SaveChanges();
