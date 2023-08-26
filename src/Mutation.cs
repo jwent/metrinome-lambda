@@ -374,47 +374,60 @@ public class Mutation {
 		return newCampaign.Id;
 	}
 
-	// [Authorize(Policy = "CustomerPolicy")]
-	// public static Guid? updateCampaign(IResolveFieldContext context, string campaignId, TrackingCampaignSubmission campaign) {
-	// 	Console.WriteLine("updateCampaign started!");
-	// 	Guid userId;
-	// 	if (context.User.Identity is ClaimsIdentity identity)
-	// 		userId = Guid.Parse(identity.FindFirst("id").Value);
-	// 	else
-	// 		throw new Exception("id claim missing");
+	[Authorize(Policy = "CustomerPolicy")]
+	public static Guid? updateCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, TrackingCampaignSubmission campaign, string campaignId) {
+		var userId = UserController.GetCurrentUserId(context);
 
-	// 	var campaignGuid = Guid.Parse(campaignId);
-	// 	var existingCampaign = OnTrackDBContext.TrackingCampaigns.Where(e => e.Id == campaignGuid && e.ParentTracker.Owner.Id == userId).FirstOrDefault();
-	// 	if (existingCampaign == null)
-	// 		throw new Exception("campaign not found!");
+		Console.WriteLine($"[+] searching user trackers by userId: {userId}");
+		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
-	// 	existingCampaign.Platform = campaign.Platform ?? existingCampaign.Platform;
-	// 	existingCampaign.CampaignName = campaign.CampaignName ?? existingCampaign.CampaignName;
-	// 	existingCampaign.CampaignBudget = campaign.CampaignBudget ?? existingCampaign.CampaignBudget;
-	// 	existingCampaign.ConversionValue = campaign.ConversionValue ?? existingCampaign.ConversionValue;
-	// 	existingCampaign.WebsiteDomain = campaign.WebsiteDomain ?? existingCampaign.WebsiteDomain;
-	// 	existingCampaign.CartPageURL = campaign.CartPageURL ?? existingCampaign.CartPageURL;
-	// 	existingCampaign.LandingPageURL = campaign.LandingPageURL ?? existingCampaign.LandingPageURL;
-	// 	existingCampaign.PrivacyPageURL = campaign.PrivacyPageURL ?? existingCampaign.PrivacyPageURL;
-	// 	OnTrackDBContext.SaveChanges();
+		Console.WriteLine($"[+] searching campaign by campaignId: {campaignId}");
+		var oldCampaign = TrackerController.GetCampaignById(onTrackDBContext, userTracker.Id, Guid.Parse(campaignId));
 
-	// 	// Console.WriteLine("got id: " + id);
-	// 	// campaign.Id = Guid.NewGuid();
-	// 	// campaign.OwnerId = Guid.Parse(id);
-	// 	// campaign.CreatedAt = DateTime.Now;
-	// 	// campaign.Audience = 0;
+		Console.WriteLine($"[+] updating the campaign: {campaignId}");
+		
+		oldCampaign.Platform = campaign.Platform ?? oldCampaign.Platform;
+		oldCampaign.CampaignName = campaign.CampaignName ?? oldCampaign.CampaignName;
+		oldCampaign.CampaignBudget = campaign.CampaignBudget ?? oldCampaign.CampaignBudget;
+		oldCampaign.ConversionValue = campaign.ConversionValue ?? oldCampaign.ConversionValue;
+		oldCampaign.WebsiteDomain = campaign.WebsiteDomain ?? oldCampaign.WebsiteDomain;
+		oldCampaign.CartPageURL = campaign.CartPageURL ?? oldCampaign.CartPageURL;
+		oldCampaign.LandingPageURL = campaign.LandingPageURL ?? oldCampaign.LandingPageURL;
+		oldCampaign.PrivacyPageURL = campaign.PrivacyPageURL ?? oldCampaign.PrivacyPageURL;
 
-	// 	// Console.WriteLine("got campaign: " + campaign.ToString());
-	// 	// try {
-	// 	// 	OnTrackDBContext.TrackingCampaigns.Add(campaign);
-	// 	// 	Console.WriteLine("added campaign: " + campaign.ToString());
-	// 	// 	OnTrackDBContext.SaveChanges();
-	// 	// } catch (Exception e) {
-	// 	// 	Console.WriteLine("exception: " + e.ToString());
-	// 	// }
-	// 	// Console.WriteLine("saved campaign: " + campaign.ToString());
+		onTrackDBContext.TrackingCampaigns.Update(oldCampaign);
+		onTrackDBContext.SaveChanges();
 
-	// 	// Console.WriteLine("returning id: " + campaign.Id);
-	// 	return existingCampaign.Id;
-	// }
+		return oldCampaign.Id;
+	}
+	[Authorize(Policy = "CustomerPolicy")]
+	public static string? deleteCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId) {
+		var userId = UserController.GetCurrentUserId(context);
+
+		Console.WriteLine($"[+] searching user trackers by userId: {userId}");
+		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
+
+		Console.WriteLine($"[+] searching campaign by campaignId: {campaignId}");
+		var campaign = TrackerController.GetCampaignById(onTrackDBContext, userTracker.Id, Guid.Parse(campaignId));
+
+		var clicks = onTrackDBContext.TrackerClicks.Where(t=>t.Campaign.Id==campaign.Id).ToList();
+		foreach(var click in clicks){
+			var trackerClickExtraProperties = onTrackDBContext.TrackerClickExtraProperties.Where(t=>t.ClickParent.Id==click.Id).ToList();
+			Console.WriteLine($"[+] remove click extras: {click.Id}");
+			onTrackDBContext.RemoveRange(trackerClickExtraProperties);
+		}
+		Console.WriteLine($"[+] remove clicks: {campaignId}");
+		onTrackDBContext.RemoveRange(clicks);
+		var campaignExtraProperties = onTrackDBContext.TrackingCampaignExtraProperties.Where(t=>t.Parent.Id==campaign.Id).ToList();
+
+		Console.WriteLine($"[+] remove campaign extras: {campaignId}");
+		onTrackDBContext.RemoveRange(campaignExtraProperties);
+
+		Console.WriteLine($"[+] removing the campaign: {campaignId}");
+
+		onTrackDBContext.TrackingCampaigns.Remove(campaign);
+		onTrackDBContext.SaveChanges();
+
+		return campaignId;
+	}
 }
