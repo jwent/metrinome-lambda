@@ -86,8 +86,8 @@ public class TrackingCampaignData {
 public class TrackerClickData {
 	public TrackerClickData(TrackerClick click, TrackerClickExtraProperty extraCountry, TrackerClickExtraProperty extraRegion, TrackerClickExtraProperty extraCity) {
 		this.Id = click.Id;
-		this.ParentTracker = click.ParentTracker;
-		this.Campaign = click.Campaign;
+		// this.ParentTracker = click.ParentTracker;
+		// this.Campaign = click.Campaign;
 		this.CreatedAt = click.CreatedAt;
 		this.Ip = click.Ip;
 		this.ClickUrl = click.ClickUrl;
@@ -101,8 +101,8 @@ public class TrackerClickData {
 	}
 
 	public Guid? Id { get; set; }
-	public UserTracker? ParentTracker { get; set; }
-	public TrackingCampaign? Campaign { get; set; }
+	// public UserTracker? ParentTracker { get; set; }
+	// public TrackingCampaign? Campaign { get; set; }
 	public DateTime? CreatedAt { get; set; }
 
 	public string? Ip { get; set; }
@@ -189,6 +189,10 @@ public class AddUserResponse {
 }
 public class SuccessResponse {
 	public bool? Success { get; set; }
+}
+public class SuccessOrErrorResponse {
+	public bool? Success { get; set; }
+	public string? Error { get; set; }
 }
 public class CheckoutResponse {
 	public bool? Success { get; set; }

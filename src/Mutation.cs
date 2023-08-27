@@ -49,6 +49,50 @@ public class Mutation {
 		return new SuccessResponse { Success=true };
 	}
 
+	[Authorize(Policy = "CustomerPolicy")]
+	public static SuccessOrErrorResponse updateUserFullName(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string fullname) {
+		var userId = UserController.GetCurrentUserId(context);
+		var user = onTrackDBContext.Users
+			.Where(u => u.Id == userId)
+			.Include(u => u.ExtraProperties)
+			.First();
+
+		// assert stuff
+		if (fullname.Length > 128)
+			return new SuccessOrErrorResponse { Success=false, Error="Invalid fullname." };
+
+		// update the property
+		var prop = user.ExtraProperties.FirstOrDefault(prop => prop.PropertyKey == "FullName");
+		prop.PropertyValue = fullname;
+		// save the property
+		onTrackDBContext.SaveChanges();
+
+		// return success
+		return new SuccessOrErrorResponse { Success=true };
+	}
+
+	[Authorize(Policy = "CustomerPolicy")]
+	public static SuccessOrErrorResponse updateUserPassword(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string password) {
+		var userId = UserController.GetCurrentUserId(context);
+		var user = onTrackDBContext.Users
+			.Where(u => u.Id == userId)
+			.First();
+
+		// assert stuff
+		var passwordError = UserController.ValidatePasswordCreation(password);
+		if (passwordError != null)
+			return new SuccessOrErrorResponse { Success=false, Error=passwordError };
+
+		// salt and hash the new password
+		var passwordHash = Util.SaltAndHash(password);
+		// put into the user and save
+		user.Password = passwordHash;
+		onTrackDBContext.SaveChanges();
+
+		// return success
+		return new SuccessOrErrorResponse { Success=true };
+	}
+
 	private static List<string> SubscriptionPlanOptions = new List<string> {
 		"starter_plan",
 		"premium_plan",
