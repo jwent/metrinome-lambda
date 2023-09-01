@@ -49,20 +49,20 @@ public class Query
 		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
 		return Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 	(function(){
-		const urlParams = new URLSearchParams(window.location.search);
-		const cid=urlParams.get('cid');
+		var urlParams = new URLSearchParams(window.location.search);
+		var cid = urlParams.get('cid');
 		if(cid){
-			const rpu = window.btoa(window.location.href);
-			const rpr = window.btoa(document.referrer);
+			var rpu = window.btoa(window.location.href);
+            var rpr = window.btoa(document.referrer);
 			(function(){
 				fetch('" + endpoint + "?t=" + userTracker.Id.ToString() + @"&r='+rpr+'&u='+rpu)
-					.then(function(r) { return r.json(); })
-					.then(function(d) { sessionStorage.setItem('clid', d.clid); });
-				})();
-		}
-	})()
+                .then(function(r) { return r.json(); })
+                .then(function(d) { sessionStorage.setItem('clid', d.clid); });
+            })();
+        }
+    })();
 </script>");
-	}
+    }
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static PostbackCodes postbackCode(IResolveFieldContext context) {
