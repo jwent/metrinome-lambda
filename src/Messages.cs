@@ -153,7 +153,7 @@ public class Clicks
 public class Location
 {
 	public string? City { get; set; }
-	public string? Country { get; set; }
+	public string? Region { get; set; }
 	public int ClickCount { get; set; }
 	public int ConversionCount { get; set; }
 }

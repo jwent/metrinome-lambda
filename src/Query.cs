@@ -237,10 +237,10 @@ public class Query
 		.Select(combined => new TrackerClickData(combined.click, combined.extraCountry, combined.extraRegion, combined.extraCity)).ToList();
 
 		var topLocationsByClicks = myClicksData
-		.GroupBy(p => new { p.City, p.Country }).Select(m => new Location { City = m.Key.City, Country = m.Key.Country, ClickCount = m.Count() }).OrderByDescending(s => s.ClickCount).Take(10).ToList();
-		var conversionCountByCity = myClicksData.Where(t => t.Conversion == true).GroupBy(p => new { p.City, p.Country }).Select(m => new Location { City = m.Key.City, Country = m.Key.Country, ConversionCount = m.Count() }).OrderByDescending(s => s.ConversionCount).ToList();
+		.GroupBy(p => new { p.City, p.Region }).Select(m => new Location { City = m.Key.City, Region = m.Key.Region, ClickCount = m.Count() }).OrderByDescending(s => s.ClickCount).Take(10).ToList();
+		var conversionCountByCity = myClicksData.Where(t => t.Conversion == true).GroupBy(p => new { p.City, p.Region }).Select(m => new Location { City = m.Key.City, Region = m.Key.Region, ConversionCount = m.Count() }).OrderByDescending(s => s.ConversionCount).ToList();
 		var topLocations = topLocationsByClicks.GroupJoin(conversionCountByCity, click => click.City, conversion => conversion.City,
-	(click, locations) => new Location { City = click.City, Country = click.Country, ClickCount = click.ClickCount, ConversionCount = locations.FirstOrDefault() != null ? locations.FirstOrDefault().ConversionCount : 0 }).ToList();
+	(click, locations) => new Location { City = click.City, Region = click.Region, ClickCount = click.ClickCount, ConversionCount = locations.FirstOrDefault() != null ? locations.FirstOrDefault().ConversionCount : 0 }).ToList();
 	
 		return new TrackingCampaignDetails(campaignData, new Clicks(clicksList, count), new ChartDatas(topLocations));
 	}
