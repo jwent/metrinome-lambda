@@ -47,7 +47,9 @@ public class Query
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
 		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
-		return Util.CompressJavascriptStub(@"<script type=""text/javascript"">
+		return 
+		Util.CompressJavascriptStub(@"<script src='"+Environment.GetEnvironmentVariable("PUBLIC_SUFFIX_LIST_PARSER")+"'></script>\n") +
+		Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 	(function(){
 		var urlParams = new URLSearchParams(window.location.search);
 		var cid = urlParams.get('cid');
@@ -57,7 +59,14 @@ public class Query
 			(function(){
 				fetch('" + endpoint + "?t=" + userTracker.Id.ToString() + @"&r='+rpr+'&u='+rpu)
                 .then(function(r) { return r.json(); })
-                .then(function(d) { sessionStorage.setItem('clid', d.clid); });
+                .then(function(d) { 
+					var cookieName = 'ontrack-clid';
+					var cookieValue = d.clid;
+					var myDate = new Date();
+					var parsed = psl.parse('window.location.hostname');
+					myDate.setDate(myDate.getDate() + 7);
+					document.cookie = cookieName +'=' + cookieValue + ';expires=' + myDate + ';domain=.' + parsed.domain + ';path=/';
+				});
             })();
         }
     })();
@@ -71,16 +80,18 @@ public class Query
 		{
 			PagePostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 	(function(){
-		if(sessionStorage.getItem('clid')){
-			fetch('" + endpoint + @"postback?clid='+sessionStorage.getItem('clid'),{mode:'no-cors'})
+		var clid= document.cookie.match('(^|;)\\s*ontrack-clid\\s*=\\s*([^;]+)')?.pop() || '' ;
+		if(clid){
+			fetch('" + endpoint + @"postback?clid='+clid,{mode:'no-cors'})
 		}
 	})()
 </script>"),
 			ButtonPostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 	(function(){
 		document.getElementById('{id}').addEventListener('click',function(){
-			if(sessionStorage.getItem('clid')){
-				fetch('" + endpoint + @"postback?clid='+sessionStorage.getItem('clid'),{mode:'no-cors'})
+			var clid= document.cookie.match('(^|;)\\s*ontrack-clid\\s*=\\s*([^;]+)')?.pop() || '' ;
+			if(clid){
+				fetch('" + endpoint + @"postback?clid='+clid,{mode:'no-cors'})
 			}
 		});
 	})()
