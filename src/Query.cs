@@ -48,7 +48,7 @@ public class Query
 
 		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
 		return 
-		Util.CompressJavascriptStub(@"<script src='"+Environment.GetEnvironmentVariable("PUBLIC_SUFFIX_LIST_PARSER")+"'></script>\n") +
+		Util.CompressJavascriptStub(@"<script src='https://cdnjs.cloudflare.com/ajax/libs/psl/1.9.0/psl.min.js'></script>\n") +
 		Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 	(function(){
 		var urlParams = new URLSearchParams(window.location.search);
