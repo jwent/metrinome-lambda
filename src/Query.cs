@@ -55,11 +55,11 @@ public class Query
 		var cid = urlParams.get('cid');
 		if(cid){
 			var rpu = window.btoa(window.location.href);
-            var rpr = window.btoa(document.referrer);
+			var rpr = window.btoa(document.referrer);
 			(function(){
 				fetch('" + endpoint + "?t=" + userTracker.Id.ToString() + @"&r='+rpr+'&u='+rpu)
-                .then(function(r) { return r.json(); })
-                .then(function(d) { 
+				.then(function(r) { return r.json(); })
+				.then(function(d) { 
 					var cookieName = 'ontrack-clid';
 					var cookieValue = d.clid;
 					var myDate = new Date();
@@ -67,11 +67,11 @@ public class Query
 					myDate.setDate(myDate.getDate() + 7);
 					document.cookie = cookieName +'=' + cookieValue + ';expires=' + myDate + ';domain=.' + parsed.domain + ';path=/';
 				});
-            })();
-        }
-    })();
+			})();
+		}
+	})();
 </script>");
-    }
+	}
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static PostbackCodes postbackCode(IResolveFieldContext context) {
@@ -80,7 +80,8 @@ public class Query
 		{
 			PagePostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 	(function(){
-		var clid= document.cookie.match('(^|;)\\s*ontrack-clid\\s*=\\s*([^;]+)')?.pop() || '' ;
+		var cookies = document.cookie.match('(^|;)\\s*ontrack-clid\\s*=\\s*([0-9a-zA-Z\\-]+)');
+		var clid = cookies ? cookies.pop() : '';
 		if(clid){
 			fetch('" + endpoint + @"postback?clid='+clid,{mode:'no-cors'})
 		}
@@ -89,7 +90,8 @@ public class Query
 			ButtonPostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 	(function(){
 		document.getElementById('{id}').addEventListener('click',function(){
-			var clid= document.cookie.match('(^|;)\\s*ontrack-clid\\s*=\\s*([^;]+)')?.pop() || '' ;
+			var cookies = document.cookie.match('(^|;)\\s*ontrack-clid\\s*=\\s*([0-9a-zA-Z\\-]+)');
+			var clid = cookies ? cookies.pop() : '';
 			if(clid){
 				fetch('" + endpoint + @"postback?clid='+clid,{mode:'no-cors'})
 			}
