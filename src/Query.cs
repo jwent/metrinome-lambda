@@ -48,7 +48,10 @@ public class Query
 
 		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
 		return 
-		Util.CompressJavascriptStub(@"<script src='https://cdnjs.cloudflare.com/ajax/libs/psl/1.9.0/psl.min.js'></script>\n") +
+		Util.CompressJavascriptStub(@"<script src='" + (
+				(Environment.GetEnvironmentVariable("ONTRACK_STAGE") ?? "LOCALTEST") != "PROD"
+					? "https://cdnjs.cloudflare.com/ajax/libs/psl/1.9.0/psl.min.js"
+					: "https://app.ontrackanalytics.com/psl.min.js") + "'></script>\n") +
 		Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 	(function(){
 		var urlParams = new URLSearchParams(window.location.search);
@@ -63,7 +66,7 @@ public class Query
 					var cookieName = 'ontrack-clid';
 					var cookieValue = d.clid;
 					var myDate = new Date();
-					var parsed = psl.parse('window.location.hostname');
+					var parsed = psl.parse(window.location.hostname);
 					myDate.setDate(myDate.getDate() + 7);
 					document.cookie = cookieName +'=' + cookieValue + ';expires=' + myDate + ';domain=.' + parsed.domain + ';path=/';
 				});
