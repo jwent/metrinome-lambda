@@ -48,8 +48,8 @@ public class Query
 
 		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
 		return 
-		Util.CompressJavascriptStub(@"<script src=""" + Environment.GetEnvironmentVariable("ONTRACK_SITE_URL") + @"/cdn/psl.min.js""></script>\n") +
-		Util.CompressJavascriptStub(@"<script type=""text/javascript"">
+			Util.CompressJavascriptStub(@"<script src=""" + Environment.GetEnvironmentVariable("ONTRACK_SITE_URL") + @"cdn/psl.min.js""></script>") + "\n"
+			+ Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 	(function(){
 		var urlParams = new URLSearchParams(window.location.search);
 		var cid = urlParams.get('cid');
