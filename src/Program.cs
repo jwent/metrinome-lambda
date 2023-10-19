@@ -64,14 +64,14 @@ builder.Services
 		.AddUserContextBuilder(httpContext => new MyGraphQLUserContext(httpContext.User))
     .AddErrorInfoProvider((opts, serviceProvider) => {
     	// only expose stack traces if we are not in production
-        opts.ExposeExceptionDetails = (Environment.GetEnvironmentVariable("ONTRACK_STAGE") ?? "LOCALTEST") != "PROD";
+        opts.ExposeExceptionDetails = !Util.IsEnvironmentStage("PROD");
     }));
 
 var app = builder.Build();
 
 app.UseRouting();
 // only enable playground if we are testing locally
-if ((Environment.GetEnvironmentVariable("ONTRACK_STAGE") ?? "LOCALTEST") == "LOCALTEST") {
+if (Util.IsEnvironmentStage("LOCALTEST")) {
 	app.UseGraphQLPlayground(
 		"/",
 		new GraphQL.Server.Ui.Playground.PlaygroundOptions {

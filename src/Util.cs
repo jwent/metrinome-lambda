@@ -119,4 +119,8 @@ public class Util {
 		// create token
 		return new JwtSecurityTokenHandler().WriteToken(token);
 	}
+
+	public static bool IsEnvironmentStage(string stage) {
+		return (Environment.GetEnvironmentVariable("ONTRACK_STAGE") ?? "LOCALTEST") == stage;
+	}
 }

@@ -48,10 +48,7 @@ public class Query
 
 		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
 		return 
-		Util.CompressJavascriptStub(@"<script src='" + (
-				(Environment.GetEnvironmentVariable("ONTRACK_STAGE") ?? "LOCALTEST") != "PROD"
-					? "https://cdnjs.cloudflare.com/ajax/libs/psl/1.9.0/psl.min.js"
-					: "https://app.ontrackanalytics.com/psl.min.js") + "'></script>\n") +
+		Util.CompressJavascriptStub(@"<script src=""" + Environment.GetEnvironmentVariable("ONTRACK_SITE_URL") + @"/cdn/psl.min.js""></script>\n") +
 		Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 	(function(){
 		var urlParams = new URLSearchParams(window.location.search);
