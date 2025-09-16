@@ -2,15 +2,25 @@
 using GraphQL.Validation;
 // using GraphQL.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.IdentityModel.Tokens;
+using Stripe;
+using System.Security.Claims;
+using System.Text;
 
 
 
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
+
+var stripeSecretKey = builder.Configuration["ONTRACK_STRIPE_SECRET_KEY"];
+if (string.IsNullOrWhiteSpace(stripeSecretKey)) {
+        throw new InvalidOperationException("Stripe secret key is not configured.");
+}
+StripeConfiguration.ApiKey = stripeSecretKey.Trim();
 
 builder.Services
 	.AddAWSLambdaHosting(LambdaEventSource.HttpApi)
@@ -56,7 +66,7 @@ builder.Services.AddDbContext<OnTrackDBContext>(options =>
     options.UseNpgsql(Util.ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING"))));
 
 builder.Services
-	.AddGraphQL(b => b
+        .AddGraphQL(b => b
 		.AddAutoSchema<Query>(s => s.WithMutation<Mutation>())
 		.ConfigureExecutionOptions(opts => {})
 		.AddSystemTextJson()
@@ -66,6 +76,8 @@ builder.Services
     	// only expose stack traces if we are not in production
         opts.ExposeExceptionDetails = !Util.IsEnvironmentStage("PROD");
     }));
+
+builder.Services.AddSingleton<PaymentIntentService>();
 
 var app = builder.Build();
 
@@ -83,6 +95,59 @@ if (Util.IsEnvironmentStage("LOCALTEST")) {
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseCors("DefaultPolicy");
+
+app.MapPost("/create-payment-intent", async ([FromBody] CreatePaymentIntentRequest request,
+        PaymentIntentService paymentIntentService,
+        ILoggerFactory loggerFactory) => {
+        var logger = loggerFactory.CreateLogger("CreatePaymentIntent");
+
+        if (request == null) {
+                return Results.BadRequest(new { error = "Request body is required." });
+        }
+
+        if (request.Amount <= 0) {
+                return Results.BadRequest(new { error = "Amount must be greater than zero." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Currency)) {
+                return Results.BadRequest(new { error = "Currency is required." });
+        }
+
+        var currency = request.Currency.Trim();
+
+        var metadata = new Dictionary<string, string>();
+        if (!string.IsNullOrWhiteSpace(request.Plan)) {
+                metadata["plan"] = request.Plan.Trim();
+        }
+
+        var options = new PaymentIntentCreateOptions {
+                Amount = request.Amount,
+                Currency = currency.ToLowerInvariant(),
+                AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions {
+                        Enabled = true,
+                },
+                Metadata = metadata.Count > 0 ? metadata : null,
+        };
+
+        try {
+                var paymentIntent = await paymentIntentService.CreateAsync(options);
+                return Results.Ok(new { clientSecret = paymentIntent.ClientSecret });
+        } catch (StripeException ex) {
+                logger.LogError(ex, "Failed to create Stripe payment intent.");
+                var statusCode = ex.HttpStatusCode.HasValue ? (int)ex.HttpStatusCode.Value : StatusCodes.Status400BadRequest;
+                var errorMessage = ex.StripeError?.Message ?? "Stripe rejected the request.";
+                return Results.Problem(
+                        title: "Stripe error",
+                        detail: errorMessage,
+                        statusCode: statusCode);
+        } catch (Exception ex) {
+                logger.LogError(ex, "Unexpected error while creating payment intent.");
+                return Results.Problem(
+                        title: "Server error",
+                        detail: "Unable to create payment intent.",
+                        statusCode: StatusCodes.Status500InternalServerError);
+        }
+});
 // app.UseGraphQL("/graphql", config => {
 //     // // require that the user be authenticated
 //     config.AuthorizationRequired = false;

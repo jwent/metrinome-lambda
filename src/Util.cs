@@ -1,14 +1,11 @@
 using System.Text;
-using System.Text.Json.Nodes;
 using System.Security.Claims;
 using GraphQL;
 using GraphQL.Authorization;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
-using System.Net.Http;
 using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using Microsoft.IdentityModel.Tokens;
 
 
@@ -73,32 +70,11 @@ public class Util {
 		return javascriptStub;
 	}
 
-	private static readonly HttpClient httpClient = new HttpClient();
-
-	public static async Task<string> RequestPaymentCheckout(string plan) {
-		var api_key = ValueOrDie(Environment.GetEnvironmentVariable("INTERNAL_PAYMENT_API_KEY_HASH"));
-		var endpoint = ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_PAYMENT_ENDPOINT_URL"));
-
-		Console.WriteLine("[i] sending payment request to " + endpoint);
-		var response = await httpClient.PostAsync(endpoint, new StringContent(
-				"{\"action\":\"/payment-lambda/start-checkout\",\"plan\":\"" + plan + "\",\"internal_api_key_hash\":\"" + api_key + "\"}",
-				Encoding.UTF8, "application/json"));
-		Console.WriteLine("[+] payment response: " + response);
-
-		var responseString = await response.Content.ReadAsStringAsync();
-		Console.WriteLine("[+] payment responseString: " + responseString);
-
-		var root = ValueOrDie(JsonValue.Parse(responseString));
-		Console.WriteLine("[+] result id: " + root["id"]?.ToString());
-
-		return ValueOrDie(root["url"]).ToString();
-	}
-
-	public static T ValueOrDie<T>(T? value) {
-		if (value == null)
-			throw new Exception("[!] missing critical value!");
-		return value;
-	}
+        public static T ValueOrDie<T>(T? value) {
+                if (value == null)
+                        throw new Exception("[!] missing critical value!");
+                return value;
+        }
 
 	public static SymmetricSecurityKey key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(Util.ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY"))));
 	public static string SignAuthToken(User user) {
