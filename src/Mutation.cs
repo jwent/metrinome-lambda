@@ -100,27 +100,18 @@ public class Mutation {
 	};
 
 	[Authorize(Policy = "CustomerPolicy")]
-	public static async Task<CheckoutResponse> requestCheckout(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string plan) {
-		var userId = UserController.GetCurrentUserId(context);
-		var user = onTrackDBContext.Users
-			.Include(u => u.Organization.SubscriptionPlan)
-			.First(u => u.Id == userId);
+        public static Task<CheckoutResponse> requestCheckout(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string plan) {
+                var userId = UserController.GetCurrentUserId(context);
+                var user = onTrackDBContext.Users
+                        .Include(u => u.Organization.SubscriptionPlan)
+                        .First(u => u.Id == userId);
 
-		// check that the plan is valid
-		if (!SubscriptionPlanOptions.Contains(plan))
-			return new CheckoutResponse { Success=false, Error="invalid plan" };
+                // check that the plan is valid
+                if (!SubscriptionPlanOptions.Contains(plan))
+                        return Task.FromResult(new CheckoutResponse { Success=false, Error="invalid plan" });
 
-		// TODO: REMOVE
-		user.Organization.SubscriptionPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, plan);
-		onTrackDBContext.SaveChanges();
-		// TODO: REMOVE
-
-		// query the payment api for a checkout url
-		var url = await Util.RequestPaymentCheckout(plan);
-
-		// return the checkout url for the customer
-		return new CheckoutResponse { Success=true, Url=url };
-	}
+                throw new ExecutionError("Direct checkout is no longer supported. Use the /create-payment-intent endpoint.");
+        }
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static SuccessResponse checkPayment(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
