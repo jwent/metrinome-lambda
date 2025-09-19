@@ -134,7 +134,7 @@ app.MapPost("/create-payment-intent", async ([FromBody] CreatePaymentIntentReque
                 return Results.Ok(new { clientSecret = paymentIntent.ClientSecret });
         } catch (StripeException ex) {
                 logger.LogError(ex, "Failed to create Stripe payment intent.");
-                var statusCode = ex.HttpStatusCode.HasValue ? (int)ex.HttpStatusCode.Value : StatusCodes.Status400BadRequest;
+                var statusCode = ex.HttpStatusCode != default ? (int)ex.HttpStatusCode : StatusCodes.Status400BadRequest;
                 var errorMessage = ex.StripeError?.Message ?? "Stripe rejected the request.";
                 return Results.Problem(
                         title: "Stripe error",

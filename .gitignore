@@ -3,3 +3,9 @@ obj
 dist
 Migrations
 *.mock.txt
+.vs/
+*.csproj.user
+bin/
+obj/
+Properties/
+on-track-backend.sln
