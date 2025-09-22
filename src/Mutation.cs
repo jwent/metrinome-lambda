@@ -4,6 +4,8 @@ using GraphQL;
 using GraphQL.Authorization;
 
 public class Mutation {
+        private const string StandardMonthlyPlanKey = "monthly_plan_299";
+        private const string PremiumMonthlyPlanKey = "monthly_plan_499";
 	public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
 		// find a user by email and password
 		var user = onTrackDBContext.Users
@@ -93,11 +95,10 @@ public class Mutation {
 		return new SuccessOrErrorResponse { Success=true };
 	}
 
-	private static List<string> SubscriptionPlanOptions = new List<string> {
-		"starter_plan",
-		"premium_plan",
-		"enterprise_plan",
-	};
+        private static List<string> SubscriptionPlanOptions = new List<string> {
+                StandardMonthlyPlanKey,
+                PremiumMonthlyPlanKey,
+        };
 
 	[Authorize(Policy = "CustomerPolicy")]
         public static Task<CheckoutResponse> requestCheckout(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string plan) {
@@ -106,11 +107,44 @@ public class Mutation {
                         .Include(u => u.Organization.SubscriptionPlan)
                         .First(u => u.Id == userId);
 
+                if (string.IsNullOrWhiteSpace(plan))
+                        return Task.FromResult(new CheckoutResponse { Success=false, Error="missing plan" });
+
+                plan = plan.Trim();
+
                 // check that the plan is valid
                 if (!SubscriptionPlanOptions.Contains(plan))
                         return Task.FromResult(new CheckoutResponse { Success=false, Error="invalid plan" });
 
-                throw new ExecutionError("Direct checkout is no longer supported. Use the /create-payment-intent endpoint.");
+                OrganizationalSubscriptionPlan? selectedPlan;
+                try {
+                        selectedPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, plan);
+                } catch (InvalidOperationException) {
+                        return Task.FromResult(new CheckoutResponse { Success=false, Error="plan unavailable" });
+                }
+
+                user.Organization.SubscriptionPlan = selectedPlan;
+                onTrackDBContext.SaveChanges();
+
+                var paymentFormUrl = Environment.GetEnvironmentVariable("ONTRACK_STRIPE_PAYMENT_FORM_URL");
+                if (string.IsNullOrWhiteSpace(paymentFormUrl)) {
+                        var siteUrl = Environment.GetEnvironmentVariable("ONTRACK_SITE_URL");
+                        if (!string.IsNullOrWhiteSpace(siteUrl))
+                                paymentFormUrl = siteUrl.TrimEnd('/') + "/stripe-payment";
+                }
+
+                string? redirectUrl = null;
+                if (!string.IsNullOrWhiteSpace(paymentFormUrl)) {
+                        var separator = paymentFormUrl.Contains('?') ? '&' : '?';
+                        redirectUrl = $"{paymentFormUrl}{separator}plan={plan}";
+                }
+
+                return Task.FromResult(new CheckoutResponse {
+                        Success=true,
+                        Url=redirectUrl,
+                        Error=null,
+                        SelectedPlanKey=selectedPlan?.PlanKey,
+                });
         }
 
 	[Authorize(Policy = "CustomerPolicy")]
@@ -120,7 +154,7 @@ public class Mutation {
 			.Include(u => u.Organization.SubscriptionPlan)
 			.First(u => u.Id == userId);
 
-		user.Organization.SubscriptionPlan = user.Organization.SubscriptionPlan ?? UserController.GetSubscriptionPlanByKey(onTrackDBContext, "starter_plan");
+                user.Organization.SubscriptionPlan = user.Organization.SubscriptionPlan ?? UserController.GetSubscriptionPlanByKey(onTrackDBContext, StandardMonthlyPlanKey);
 		onTrackDBContext.SaveChanges();
 
 		return new SuccessResponse { Success=true };
@@ -347,16 +381,8 @@ public class Mutation {
 		user.UserState = "Active";
 		user.ResetPasswordToken = ""; // clear the reset token to prevent reuse
 
-		// FREE PLAN SYSTEM
-		var freePlan = UserController.GetSubscriptionPlanByFree(onTrackDBContext);
-		if (freePlan != null) {
-			Console.WriteLine($"[+] adding user free plan: {freePlan.Id}");
-			user.Organization.SubscriptionPlan = freePlan;
-		}
-		// END FREE PLAN SYSTEM
-
-		// save the properties
-		onTrackDBContext.SaveChanges();
+                // save the properties
+                onTrackDBContext.SaveChanges();
 
 		// return token
 		return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
