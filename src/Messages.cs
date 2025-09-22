@@ -196,9 +196,10 @@ public class SuccessOrErrorResponse {
 	public string? Error { get; set; }
 }
 public class CheckoutResponse {
-	public bool? Success { get; set; }
-	public string? Url { get; set; }
-	public string? Error { get; set; }
+        public bool? Success { get; set; }
+        public string? Url { get; set; }
+        public string? Error { get; set; }
+        public string? SelectedPlanKey { get; set; }
 }
 
 

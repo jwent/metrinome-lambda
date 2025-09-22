@@ -23,42 +23,25 @@ public class OnTrackDBContext : DbContext {
 	}
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder) {
-		modelBuilder.Entity<OrganizationalSubscriptionPlan>().HasData(new OrganizationalSubscriptionPlan {
-				Id=Guid.NewGuid(),
-				PlanKey="starter_plan",
-				PlanName="OnTrack Starter Plan",
-				UsersLimitPerPlan=1,
-				CampaignsLimitPerPlan=3,
-				CanUseInsightAnalytics=false,
-				IsFreePlan=false,
-			},
-			new OrganizationalSubscriptionPlan {
-				Id=Guid.NewGuid(),
-				PlanKey="premium_plan",
-				PlanName="OnTrack Premium Plan",
-				UsersLimitPerPlan=2,
-				CampaignsLimitPerPlan=7,
-				CanUseInsightAnalytics=true,
-				IsFreePlan=false,
-			},
-			new OrganizationalSubscriptionPlan {
-				Id=Guid.NewGuid(),
-				PlanKey="enterprise_plan",
-				PlanName="OnTrack Enterprise Plan",
-				UsersLimitPerPlan=1000,
-				CampaignsLimitPerPlan=10000,
-				CanUseInsightAnalytics=true,
-				IsFreePlan=false,
-			},
-			new OrganizationalSubscriptionPlan {
-				Id=Guid.NewGuid(),
-				PlanKey="free_enterprise_plan",
-				PlanName="OnTrack Free Plan",
-				UsersLimitPerPlan=1000,
-				CampaignsLimitPerPlan=10000,
-				CanUseInsightAnalytics=true,
-				IsFreePlan=true,
-			});
+                modelBuilder.Entity<OrganizationalSubscriptionPlan>().HasData(
+                        new OrganizationalSubscriptionPlan {
+                                Id=Guid.NewGuid(),
+                                PlanKey="monthly_plan_299",
+                                PlanName="OnTrack Growth Plan ($299/mo)",
+                                UsersLimitPerPlan=5,
+                                CampaignsLimitPerPlan=15,
+                                CanUseInsightAnalytics=true,
+                                IsFreePlan=false,
+                        },
+                        new OrganizationalSubscriptionPlan {
+                                Id=Guid.NewGuid(),
+                                PlanKey="monthly_plan_499",
+                                PlanName="OnTrack Scale Plan ($499/mo)",
+                                UsersLimitPerPlan=1000,
+                                CampaignsLimitPerPlan=10000,
+                                CanUseInsightAnalytics=true,
+                                IsFreePlan=false,
+                        });
 
 		base.OnModelCreating(modelBuilder);
 	}

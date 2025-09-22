@@ -326,10 +326,10 @@ public class Query
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
 		// check if the organization subscription plan allows for insight analytics
-		if (!organization.SubscriptionPlan.CanUseInsightAnalytics) {
-			Console.WriteLine($"[+] organization does not have insight analytics in their subscription plan!");
-			throw new Exception("unauthorized");
-		}
+                if (organization.SubscriptionPlan == null || !organization.SubscriptionPlan.CanUseInsightAnalytics) {
+                        Console.WriteLine($"[+] organization does not have insight analytics in their subscription plan!");
+                        throw new Exception("unauthorized");
+                }
 
 		// select where we want to get stuff from
 		var query =
@@ -418,10 +418,10 @@ public class Query
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
 		// check if the organization subscription plan allows for insight analytics
-		if (!organization.SubscriptionPlan.CanUseInsightAnalytics) {
-			Console.WriteLine($"[+] organization does not have insight analytics in their subscription plan!");
-			throw new Exception("unauthorized");
-		}
+                if (organization.SubscriptionPlan == null || !organization.SubscriptionPlan.CanUseInsightAnalytics) {
+                        Console.WriteLine($"[+] organization does not have insight analytics in their subscription plan!");
+                        throw new Exception("unauthorized");
+                }
 
 		// select where we want to get stuff from
 		var query =
