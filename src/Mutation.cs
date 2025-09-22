@@ -1,11 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using GraphQL;
 using GraphQL.Authorization;
 
 public class Mutation {
-        private const string StandardMonthlyPlanKey = "monthly_plan_299";
-        private const string PremiumMonthlyPlanKey = "monthly_plan_499";
+        private const string StandardMonthlyPlanKey = StripePlanConfiguration.BasicPlanKey;
+        private const string PremiumMonthlyPlanKey = StripePlanConfiguration.ProPlanKey;
 	public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
 		// find a user by email and password
 		var user = onTrackDBContext.Users
@@ -95,10 +97,8 @@ public class Mutation {
 		return new SuccessOrErrorResponse { Success=true };
 	}
 
-        private static List<string> SubscriptionPlanOptions = new List<string> {
-                StandardMonthlyPlanKey,
-                PremiumMonthlyPlanKey,
-        };
+        private static readonly IReadOnlyDictionary<string, StripePlanDetails> SubscriptionPlanOptions =
+                StripePlanConfiguration.GetAllPlans().ToDictionary(plan => plan.PlanKey, plan => plan);
 
 	[Authorize(Policy = "CustomerPolicy")]
         public static Task<CheckoutResponse> requestCheckout(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string plan) {
@@ -113,7 +113,7 @@ public class Mutation {
                 plan = plan.Trim();
 
                 // check that the plan is valid
-                if (!SubscriptionPlanOptions.Contains(plan))
+                if (!SubscriptionPlanOptions.ContainsKey(plan))
                         return Task.FromResult(new CheckoutResponse { Success=false, Error="invalid plan" });
 
                 OrganizationalSubscriptionPlan? selectedPlan;
@@ -125,25 +125,24 @@ public class Mutation {
 
                 user.Organization.SubscriptionPlan = selectedPlan;
                 onTrackDBContext.SaveChanges();
+                var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY");
+                if (string.IsNullOrWhiteSpace(publishableKey))
+                        return Task.FromResult(new CheckoutResponse { Success=false, Error="Stripe publishable key not configured." });
 
-                var paymentFormUrl = Environment.GetEnvironmentVariable("ONTRACK_STRIPE_PAYMENT_FORM_URL");
-                if (string.IsNullOrWhiteSpace(paymentFormUrl)) {
-                        var siteUrl = Environment.GetEnvironmentVariable("ONTRACK_SITE_URL");
-                        if (!string.IsNullOrWhiteSpace(siteUrl))
-                                paymentFormUrl = siteUrl.TrimEnd('/') + "/stripe-payment";
-                }
-
-                string? redirectUrl = null;
-                if (!string.IsNullOrWhiteSpace(paymentFormUrl)) {
-                        var separator = paymentFormUrl.Contains('?') ? '&' : '?';
-                        redirectUrl = $"{paymentFormUrl}{separator}plan={plan}";
-                }
+                var planDetails = SubscriptionPlanOptions[plan];
+                var priceId = planDetails.ResolvePriceIdFromEnvironment();
+                if (string.IsNullOrWhiteSpace(priceId))
+                        return Task.FromResult(new CheckoutResponse { Success=false, Error="Stripe price id not configured for plan." });
 
                 return Task.FromResult(new CheckoutResponse {
                         Success=true,
-                        Url=redirectUrl,
+                        Url=null,
                         Error=null,
                         SelectedPlanKey=selectedPlan?.PlanKey,
+                        PublishableKey=publishableKey.Trim(),
+                        PriceId=priceId,
+                        Currency=planDetails.Currency,
+                        AmountCents=planDetails.AmountCents,
                 });
         }
 
