@@ -12,7 +12,8 @@ public class MutationSchemaTests
         var mutationGraphType = new AutoRegisteringObjectGraphType<Mutation>();
         var fieldNames = mutationGraphType.Fields.Select(field => field.Name).ToList();
 
-        Assert.Contains("requestCheckout", fieldNames);
         Assert.Contains("setupSubscription", fieldNames);
+        Assert.Contains("startSubscriptionCheckout", fieldNames);
+        Assert.Contains("completeSubscription", fieldNames);
     }
 }
