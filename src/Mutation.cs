@@ -102,7 +102,15 @@ public class Mutation {
         private static readonly IReadOnlyDictionary<string, StripePlanDetails> SubscriptionPlanOptions =
                 StripePlanConfiguration.GetAllPlans().ToDictionary(plan => plan.PlanKey, plan => plan);
 
-	[Authorize(Policy = "CustomerPolicy")]
+        [Authorize(Policy = "CustomerPolicy")]
+        public static Task<CheckoutResponse> setupSubscription(
+                IResolveFieldContext context,
+                [FromServices] OnTrackDBContext onTrackDBContext,
+                string plan) {
+                return requestCheckout(context, onTrackDBContext, plan);
+        }
+
+        [Authorize(Policy = "CustomerPolicy")]
         public static Task<CheckoutResponse> requestCheckout(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string plan) {
                 var userId = UserController.GetCurrentUserId(context);
                 var user = onTrackDBContext.Users
