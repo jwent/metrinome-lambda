@@ -206,10 +206,32 @@ public class CheckoutResponse {
         public long? AmountCents { get; set; }
 }
 
+public class CreatePaymentIntentResponse
+{
+        public bool Success { get; set; }
+        public string? ClientSecret { get; set; }
+        public string? Error { get; set; }
+}
+
+public class StripePlanInfo
+{
+        public string PlanKey { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string? PriceId { get; set; }
+        public string Currency { get; set; } = "usd";
+        public long AmountCents { get; set; }
+}
+
+public class StripeConfig
+{
+        public string? PublishableKey { get; set; }
+        public List<StripePlanInfo> Plans { get; set; } = new();
+}
+
 
 public class PostbackCodes {
-	public string? PagePostback { get; set; }
-	public string? ButtonPostback { get; set; }
+        public string? PagePostback { get; set; }
+        public string? ButtonPostback { get; set; }
 }
 
 public class LoginUserResponse {
