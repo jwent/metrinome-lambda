@@ -23,11 +23,14 @@ public class OnTrackDBContext : DbContext {
 	}
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder) {
+                var basicPlan = StripePlanConfiguration.GetPlanDetails(StripePlanConfiguration.BasicPlanKey);
+                var proPlan = StripePlanConfiguration.GetPlanDetails(StripePlanConfiguration.ProPlanKey);
+
                 modelBuilder.Entity<OrganizationalSubscriptionPlan>().HasData(
                         new OrganizationalSubscriptionPlan {
                                 Id=Guid.NewGuid(),
-                                PlanKey="monthly_plan_299",
-                                PlanName="OnTrack Growth Plan ($299/mo)",
+                                PlanKey=basicPlan.PlanKey,
+                                PlanName=basicPlan.Name,
                                 UsersLimitPerPlan=5,
                                 CampaignsLimitPerPlan=15,
                                 CanUseInsightAnalytics=true,
@@ -35,8 +38,8 @@ public class OnTrackDBContext : DbContext {
                         },
                         new OrganizationalSubscriptionPlan {
                                 Id=Guid.NewGuid(),
-                                PlanKey="monthly_plan_499",
-                                PlanName="OnTrack Scale Plan ($499/mo)",
+                                PlanKey=proPlan.PlanKey,
+                                PlanName=proPlan.Name,
                                 UsersLimitPerPlan=1000,
                                 CampaignsLimitPerPlan=10000,
                                 CanUseInsightAnalytics=true,

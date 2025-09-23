@@ -200,6 +200,10 @@ public class CheckoutResponse {
         public string? Url { get; set; }
         public string? Error { get; set; }
         public string? SelectedPlanKey { get; set; }
+        public string? PublishableKey { get; set; }
+        public string? PriceId { get; set; }
+        public string? Currency { get; set; }
+        public long? AmountCents { get; set; }
 }
 
 
