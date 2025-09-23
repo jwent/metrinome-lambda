@@ -1,15 +1,39 @@
 using GraphQL;
 using GraphQL.Authorization;
-using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Security.Claims;
 
 public class Query
 {
-	[Authorize(Policy = "CustomerPolicy")]
-	public static OrganizationData getOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
-		var org = UserController.GetCurrentOrganization(context, onTrackDBContext);
-		var userdatalist = org.Users
-			.Select(user => new UserData {
+        public static StripeConfig stripeConfig()
+        {
+                var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY");
+
+                var plans = StripePlanConfiguration
+                        .GetAllPlans()
+                        .Select(plan => new StripePlanInfo
+                        {
+                                PlanKey = plan.PlanKey,
+                                Name = plan.Name,
+                                PriceId = plan.ResolvePriceIdFromEnvironment(),
+                                Currency = plan.Currency,
+                                AmountCents = plan.AmountCents,
+                        })
+                        .ToList();
+
+                return new StripeConfig
+                {
+                        PublishableKey = string.IsNullOrWhiteSpace(publishableKey) ? null : publishableKey.Trim(),
+                        Plans = plans,
+                };
+        }
+
+        [Authorize(Policy = "CustomerPolicy")]
+        public static OrganizationData getOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
+                var org = UserController.GetCurrentOrganization(context, onTrackDBContext);
+                var userdatalist = org.Users
+                        .Select(user => new UserData {
 				Email=user.Email,
 				CreatedAt=user.CreatedAt,
 				FullName=user.ExtraProperties.FirstOrDefault(prop => prop.PropertyKey == "FullName")?.PropertyValue,
