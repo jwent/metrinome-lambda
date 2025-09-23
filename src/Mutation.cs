@@ -107,11 +107,11 @@ public class Mutation {
                 IResolveFieldContext context,
                 [FromServices] OnTrackDBContext onTrackDBContext,
                 string plan) {
-                return requestCheckout(context, onTrackDBContext, plan);
+                return startSubscriptionCheckout(context, onTrackDBContext, plan);
         }
 
         [Authorize(Policy = "CustomerPolicy")]
-        public static Task<CheckoutResponse> requestCheckout(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string plan) {
+        public static Task<CheckoutResponse> startSubscriptionCheckout(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string plan) {
                 var userId = UserController.GetCurrentUserId(context);
                 var user = onTrackDBContext.Users
                         .Include(u => u.Organization.SubscriptionPlan)
@@ -217,7 +217,7 @@ public class Mutation {
                 }
         }
 
-        public static async Task<CreateSubscriptionResponse> createSubscription(
+        public static async Task<CreateSubscriptionResponse> completeSubscription(
                 [FromServices] CustomerService customerService,
                 [FromServices] SubscriptionService subscriptionService,
                 [FromServices] PaymentMethodService paymentMethodService,
