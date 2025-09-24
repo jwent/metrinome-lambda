@@ -12,6 +12,8 @@ using System.Text;
 
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
+//DEBUG
+builder.WebHost.UseUrls("http://localhost:8020");
 
 var stripeSecretKey = builder.Configuration["ONTRACK_STRIPE_SECRET_KEY"];
 if (string.IsNullOrWhiteSpace(stripeSecretKey)) {

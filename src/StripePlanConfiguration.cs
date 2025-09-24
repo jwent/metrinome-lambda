@@ -17,8 +17,8 @@ public class StripePlanDetails
 
 public static class StripePlanConfiguration
 {
-        public const string BasicPlanKey = "monthly_plan_299";
-        public const string ProPlanKey = "monthly_plan_499";
+        public const string BasicPlanKey = "basic_plan";
+        public const string ProPlanKey = "pro_plan";
 
         private static readonly IReadOnlyDictionary<string, StripePlanDetails> Plans =
                 new ReadOnlyDictionary<string, StripePlanDetails>(new Dictionary<string, StripePlanDetails>
@@ -29,7 +29,7 @@ public static class StripePlanConfiguration
                                 {
                                         PlanKey = BasicPlanKey,
                                         Name = "OnTrack Basic Plan ($299/mo)",
-                                        PriceEnvironmentVariable = "STRIPE_BASIC_PLAN_PRICE_ID",
+                                        PriceEnvironmentVariable = "STRIPE_BASIC_PLAN_ID",
                                         AmountCents = 29900,
                                         Currency = "usd",
                                 }
@@ -40,7 +40,7 @@ public static class StripePlanConfiguration
                                 {
                                         PlanKey = ProPlanKey,
                                         Name = "OnTrack Pro Plan ($499/mo)",
-                                        PriceEnvironmentVariable = "STRIPE_PRO_PLAN_PRICE_ID",
+                                        PriceEnvironmentVariable = "STRIPE_PRO_PLAN_ID",
                                         AmountCents = 49900,
                                         Currency = "usd",
                                 }
