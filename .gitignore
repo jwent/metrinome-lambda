@@ -9,3 +9,4 @@ bin/
 obj/
 Properties/
 on-track-backend.sln
+.vscode/

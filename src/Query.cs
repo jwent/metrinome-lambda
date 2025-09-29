@@ -6,29 +6,6 @@ using System.Security.Claims;
 
 public class Query
 {
-        public static StripeConfig stripeConfig()
-        {
-                var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY");
-
-                var plans = StripePlanConfiguration
-                        .GetAllPlans()
-                        .Select(plan => new StripePlanInfo
-                        {
-                                PlanKey = plan.PlanKey,
-                                Name = plan.Name,
-                                PriceId = plan.ResolvePriceIdFromEnvironment(),
-                                Currency = plan.Currency,
-                                AmountCents = plan.AmountCents,
-                        })
-                        .ToList();
-
-                return new StripeConfig
-                {
-                        PublishableKey = string.IsNullOrWhiteSpace(publishableKey) ? null : publishableKey.Trim(),
-                        Plans = plans,
-                };
-        }
-
         [Authorize(Policy = "CustomerPolicy")]
         public static OrganizationData getOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
                 var org = UserController.GetCurrentOrganization(context, onTrackDBContext);

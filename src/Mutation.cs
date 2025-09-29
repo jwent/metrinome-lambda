@@ -1,15 +1,18 @@
+﻿using Amazon.Runtime.Internal.Util;
+using GraphQL;
+using GraphQL.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Stripe;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using GraphQL;
-using GraphQL.Authorization;
-using Stripe;
+using System.Threading;
 
 public class Mutation {
-        private const string StandardMonthlyPlanKey = StripePlanConfiguration.BasicPlanKey;
-        private const string PremiumMonthlyPlanKey = StripePlanConfiguration.ProPlanKey;
+    private const string StandardMonthlyPlanKey = StripePlanConfiguration.BasicPlanKey;
+    private const string PremiumMonthlyPlanKey = StripePlanConfiguration.ProPlanKey;
+
 	public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
 		// find a user by email and password
 		var user = onTrackDBContext.Users
@@ -99,64 +102,93 @@ public class Mutation {
 		return new SuccessOrErrorResponse { Success=true };
 	}
 
-        private static readonly IReadOnlyDictionary<string, StripePlanDetails> SubscriptionPlanOptions =
-                StripePlanConfiguration.GetAllPlans().ToDictionary(plan => plan.PlanKey, plan => plan);
+    [Authorize(Policy = "CustomerPolicy")]
+    public static Task<CreatePaymentIntentResponse> setupSubscription(
+            IResolveFieldContext context,
+            [FromServices] OnTrackDBContext onTrackDBContext,
+            [FromServices] PaymentIntentService paymentIntentService,
+			[FromServices] ILogger<Mutation> logger,
+            string plan)
+	{
+            return startSubscriptionCheckout(context, onTrackDBContext, paymentIntentService, logger, plan);
+    }
 
-        [Authorize(Policy = "CustomerPolicy")]
-        public static Task<CheckoutResponse> setupSubscription(
-                IResolveFieldContext context,
-                [FromServices] OnTrackDBContext onTrackDBContext,
-                string plan) {
-                return startSubscriptionCheckout(context, onTrackDBContext, plan);
-        }
+    [Authorize(Policy = "CustomerPolicy")]
+    public static async Task<CreatePaymentIntentResponse> startSubscriptionCheckout(
+		IResolveFieldContext context, 
+		[FromServices] OnTrackDBContext onTrackDBContext,
+        [FromServices] PaymentIntentService paymentIntentService,
+		[FromServices] ILogger<Mutation> logger,
+        string plan) 
+	{
+			
+		var userId = UserController.GetCurrentUserId(context);
+		var user = onTrackDBContext.Users
+				.Include(u => u.Organization.SubscriptionPlan)
+				.First(u => u.Id == userId);
 
-        [Authorize(Policy = "CustomerPolicy")]
-        public static Task<CheckoutResponse> startSubscriptionCheckout(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string plan) {
-                var userId = UserController.GetCurrentUserId(context);
-                var user = onTrackDBContext.Users
-                        .Include(u => u.Organization.SubscriptionPlan)
-                        .First(u => u.Id == userId);
+		if (string.IsNullOrWhiteSpace(plan))
+			return new CreatePaymentIntentResponse { Success = false, Error = "missing plan" };
 
-                if (string.IsNullOrWhiteSpace(plan))
-                        return Task.FromResult(new CheckoutResponse { Success=false, Error="missing plan" });
+		plan = plan.Trim();
 
-                plan = plan.Trim();
+        IReadOnlyDictionary<string, StripePlanDetails> SubscriptionPlanOptions =
+			StripePlanConfiguration.GetAllPlans().ToDictionary(plan => plan.PlanKey);
 
-                // check that the plan is valid
-                if (!SubscriptionPlanOptions.ContainsKey(plan))
-                        return Task.FromResult(new CheckoutResponse { Success=false, Error="invalid plan" });
+		// check that the plan is valid
+		if (!SubscriptionPlanOptions.ContainsKey(plan))
+			return new CreatePaymentIntentResponse { Success = false, Error = "invalid plan" };
 
-                OrganizationalSubscriptionPlan? selectedPlan;
-                try {
-                        selectedPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, plan);
-                } catch (InvalidOperationException) {
-                        return Task.FromResult(new CheckoutResponse { Success=false, Error="plan unavailable" });
-                }
+		OrganizationalSubscriptionPlan? selectedPlan;
+		try {
+				selectedPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, plan);
+		} catch (InvalidOperationException) {
+			return new CreatePaymentIntentResponse { Success = false, Error = "plan unavailable" };
+		}
 
-                user.Organization.SubscriptionPlan = selectedPlan;
-                onTrackDBContext.SaveChanges();
-                var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY");
-                if (string.IsNullOrWhiteSpace(publishableKey))
-                        return Task.FromResult(new CheckoutResponse { Success=false, Error="Stripe publishable key not configured." });
+		user.Organization.SubscriptionPlan = selectedPlan;
+		onTrackDBContext.SaveChanges();
 
-                var planDetails = SubscriptionPlanOptions[plan];
-                var priceId = planDetails.ResolvePriceIdFromEnvironment();
-                if (string.IsNullOrWhiteSpace(priceId))
-                        return Task.FromResult(new CheckoutResponse { Success=false, Error="Stripe price id not configured for plan." });
+		var planDetails = SubscriptionPlanOptions[plan];
 
-                return Task.FromResult(new CheckoutResponse {
-                        Success=true,
-                        Url=null,
-                        Error=null,
-                        SelectedPlanKey=selectedPlan?.PlanKey,
-                        PublishableKey=publishableKey.Trim(),
-                        PriceId=priceId,
-                        Currency=planDetails.Currency,
-                        AmountCents=planDetails.AmountCents,
-                });
-        }
+		var options = new PaymentIntentCreateOptions
+		{
+			Amount = planDetails.AmountCents,
+			Currency = planDetails.Currency,
+			AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
+			{
+				Enabled = true,
+			},
+			Metadata = new Dictionary<string, string>
+		{
+			{ "planKey", planDetails.PlanKey },
+			{ "userId", user.Id.ToString() }
+		}
+    };
 
-        [Authorize(Policy = "CustomerPolicy")]
+    try
+    {
+        var paymentIntent = await paymentIntentService.CreateAsync(options);
+
+        return new CreatePaymentIntentResponse
+        {
+            Success = true,
+            ClientSecret = paymentIntent.ClientSecret,
+        };
+    }
+    catch (StripeException ex)
+    {
+        logger.LogError(ex, "Failed to create payment intent for subscription.");
+        return new CreatePaymentIntentResponse { Success = false, Error = ex.StripeError?.Message ?? "Stripe error" };
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Unexpected error during subscription checkout.");
+        return new CreatePaymentIntentResponse { Success = false, Error = "Unexpected error" };
+    }
+}
+
+    [Authorize(Policy = "CustomerPolicy")]
         public static SuccessResponse checkPayment(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
                 var userId = UserController.GetCurrentUserId(context);
                 var user = onTrackDBContext.Users
@@ -218,20 +250,28 @@ public class Mutation {
         }
 
         public static async Task<CreateSubscriptionResponse> completeSubscription(
-                [FromServices] CustomerService customerService,
-                [FromServices] SubscriptionService subscriptionService,
-                [FromServices] PaymentMethodService paymentMethodService,
-                [FromServices] ILogger<Mutation> logger,
-                string planKey,
-                string paymentMethodId,
-                string customerEmail,
-                string? customerName) {
-                if (string.IsNullOrWhiteSpace(planKey))
-                        return new CreateSubscriptionResponse { Success = false, Error = "Plan is required." };
+            [FromServices] CustomerService customerService,
+            [FromServices] SubscriptionService subscriptionService,
+            [FromServices] PaymentMethodService paymentMethodService,
+            [FromServices] ILogger<Mutation> logger,
+            [FromServices] OnTrackDBContext onTrackDBContext,
+            string planKey,
+            string paymentMethodId,
+            string customerEmail,
+            string? customerName) {
 
-                var trimmedPlanKey = planKey.Trim();
-                if (!StripePlanConfiguration.TryGetPlanDetails(trimmedPlanKey, out var planDetails))
-                        return new CreateSubscriptionResponse { Success = false, Error = "Invalid plan." };
+		//DEBUG
+		var priceId = "price_id";
+
+
+            if (string.IsNullOrWhiteSpace(planKey))
+                    return new CreateSubscriptionResponse { Success = false, Error = "Plan is required." };
+
+            var trimmedPlanKey = planKey.Trim();
+			var planDetails = StripePlanConfiguration.GetPlanDetails(trimmedPlanKey);
+
+			if (planDetails == null)
+				return new CreateSubscriptionResponse { Success = false, Error = "Invalid plan." };
 
                 if (string.IsNullOrWhiteSpace(paymentMethodId))
                         return new CreateSubscriptionResponse { Success = false, Error = "Payment method is required." };
@@ -242,8 +282,8 @@ public class Mutation {
                         return new CreateSubscriptionResponse { Success = false, Error = "Customer email is required." };
 
                 var trimmedCustomerEmail = customerEmail.Trim();
-                var priceId = planDetails.ResolvePriceIdFromEnvironment();
-                if (string.IsNullOrWhiteSpace(priceId))
+
+                if (string.IsNullOrWhiteSpace(planDetails.PlanKey))
                         return new CreateSubscriptionResponse { Success = false, Error = "Stripe price id is not configured for the requested plan." };
 
                 Customer? customer = null;
@@ -351,7 +391,6 @@ public class Mutation {
                                         CustomerId = customer.Id,
                                         PublishableKey = publishableKeyValue,
                                         PlanKey = planDetails.PlanKey,
-                                        PriceId = priceId,
                                         AlreadySubscribed = true,
                                 };
                         }
@@ -363,7 +402,6 @@ public class Mutation {
                                         Items = new List<SubscriptionItemOptions> {
                                                 new SubscriptionItemOptions {
                                                         Id = subscriptionItem.Id,
-                                                        Price = priceId,
                                                 },
                                         },
                                         Expand = new List<string> { "latest_invoice.payment_intent" },
@@ -378,7 +416,6 @@ public class Mutation {
                                         CustomerId = customer.Id,
                                         PublishableKey = publishableKeyValue,
                                         PlanKey = planDetails.PlanKey,
-                                        PriceId = priceId,
                                         ClientSecret = updatePaymentIntent?.ClientSecret,
                                         RequiresAction = updatePaymentIntent?.Status == "requires_action" || updatePaymentIntent?.Status == "requires_payment_method",
                                 };
@@ -429,7 +466,6 @@ public class Mutation {
                                 CustomerId = customer.Id,
                                 PublishableKey = publishableKeyValue,
                                 PlanKey = planDetails.PlanKey,
-                                PriceId = priceId,
                                 RequiresAction = paymentIntent.Status == "requires_action" || paymentIntent.Status == "requires_payment_method",
                         };
                 } catch (StripeException ex) {
@@ -441,91 +477,6 @@ public class Mutation {
                 }
         }
 
-        public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password) {
-                // find a user by email
-                var possibleUser = onTrackDBContext.Users
-                                .Where(u => u.Email == email)
-				.FirstOrDefault();
-		if (possibleUser != null) {
-			Console.WriteLine("duplicate user!");
-			return new AddUserResponse { Error="Invalid or duplicate email." };
-		}
-
-		// assert stuff
-		if (fullname.Length > 128)
-			return new AddUserResponse { Error="Invalid fullname." };
-		if (email.Length > 128)
-			return new AddUserResponse { Error="Invalid or duplicate email." };
-		var passwordError = UserController.ValidatePasswordCreation(password);
-		if (passwordError != null)
-			return new AddUserResponse { Error=passwordError };
-
-		// salt and hash the new password
-		var passwordHash = Util.SaltAndHash(password);
-
-		// generate a random token so that they can register
-		var randomResetToken = Util.GetSecureRandomString(64); // 256 bits of security
-		// create both the user, their organization, and the role between them
-		var newUser = new User {
-				Id=Guid.NewGuid(),
-				Email=email,
-				Password=passwordHash,
-				CreatedAt=DateTime.Now,
-				ResetPasswordToken=randomResetToken,
-				UserState="Invited",
-			};
-		var newOrganization = new UserOrganization {
-				Id=Guid.NewGuid(),
-				CreatorId=newUser.Id,
-				CreatedAt=DateTime.Now,
-				SubscriptionPlan=null,
-			};
-		newUser.Organization = newOrganization;
-		var newRole = new UserOrganizationalRoleAssociation {
-				Id=Guid.NewGuid(),
-				OrganizationUser=newUser,
-				Organization=newOrganization,
-				RoleName="Owner",
-			};
-
-
-		try {
-			// add the new user
-			onTrackDBContext.Users.Add(newUser);
-			// add the new organization
-			onTrackDBContext.UserOrganizations.Add(newOrganization);
-			onTrackDBContext.UserOrganizationalRoleAssociations.Add(newRole);
-			// try to commit the user
-			onTrackDBContext.SaveChanges();
-
-		} catch (Microsoft.EntityFrameworkCore.DbUpdateException e) {
-			Console.WriteLine("duplicate user key error:" + e.ToString());
-			onTrackDBContext.Users.Remove(newUser);
-			onTrackDBContext.UserOrganizations.Remove(newOrganization);
-			onTrackDBContext.UserOrganizationalRoleAssociations.Remove(newRole);
-			return new AddUserResponse { Error="Invalid or duplicate email." };
-		}
-
-		// add the user's tracker immediately
-		var tracker = new UserTracker { Id=Guid.NewGuid(), Organization=newOrganization, CreatedAt=DateTime.Now };
-		onTrackDBContext.UserTrackers.Add(tracker);
-
-		// add a meta property for the user's fullname
-		onTrackDBContext.UserExtraProperties.Add(new UserExtraProperty {
-			Id = Guid.NewGuid(),
-			Parent = newUser,
-			PropertyKey = "FullName",
-			PropertyValue = fullname,
-		});
-		onTrackDBContext.SaveChanges();
-
-		// email the user to get started
-		await EmailController.SendEmail(email, "Please verify your OnTrack Analytics account",
-				$"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}VerifyMainUserEmail?resetkey={randomResetToken}'>this link</a> to verify your account and use the platform.");
-
-		// return is pointless
-		return new AddUserResponse { Id=newUser.Id };
-	}
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static async Task<AddUserResponse> addUserToOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string email) {
