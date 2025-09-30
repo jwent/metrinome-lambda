@@ -261,7 +261,7 @@ public class Mutation {
             string? customerName) {
 
 		//DEBUG
-		var priceId = "price_id";
+		var priceId = "price_1SACseCJP1EZuX5mwgIyhPi4";
 
 
             if (string.IsNullOrWhiteSpace(planKey))
@@ -477,8 +477,103 @@ public class Mutation {
                 }
         }
 
+    public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password)
+    {
+        // find a user by email
+        var possibleUser = onTrackDBContext.Users
+                .Where(u => u.Email == email)
+                .FirstOrDefault();
+        if (possibleUser != null)
+        {
+            Console.WriteLine("duplicate user!");
+            return new AddUserResponse { Error = "Invalid or duplicate email." };
+        }
 
-	[Authorize(Policy = "CustomerPolicy")]
+        // assert stuff
+        if (fullname.Length > 128)
+            return new AddUserResponse { Error = "Invalid fullname." };
+        if (email.Length > 128)
+            return new AddUserResponse { Error = "Invalid or duplicate email." };
+        var passwordError = UserController.ValidatePasswordCreation(password);
+        if (passwordError != null)
+            return new AddUserResponse { Error = passwordError };
+
+        // salt and hash the new password
+        var passwordHash = Util.SaltAndHash(password);
+
+        // generate a random token so that they can register
+        var randomResetToken = Util.GetSecureRandomString(64); // 256 bits of security
+                                                               // create both the user, their organization, and the role between them
+        var newUser = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            Password = passwordHash,
+            CreatedAt = DateTime.Now,
+            ResetPasswordToken = randomResetToken,
+            UserState = "Invited",
+        };
+        var newOrganization = new UserOrganization
+        {
+            Id = Guid.NewGuid(),
+            CreatorId = newUser.Id,
+            CreatedAt = DateTime.Now,
+            SubscriptionPlan = null,
+        };
+        newUser.Organization = newOrganization;
+        var newRole = new UserOrganizationalRoleAssociation
+        {
+            Id = Guid.NewGuid(),
+            OrganizationUser = newUser,
+            Organization = newOrganization,
+            RoleName = "Owner",
+        };
+
+
+        try
+        {
+            // add the new user
+            onTrackDBContext.Users.Add(newUser);
+            // add the new organization
+            onTrackDBContext.UserOrganizations.Add(newOrganization);
+            onTrackDBContext.UserOrganizationalRoleAssociations.Add(newRole);
+            // try to commit the user
+            onTrackDBContext.SaveChanges();
+
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException e)
+        {
+            Console.WriteLine("duplicate user key error:" + e.ToString());
+            onTrackDBContext.Users.Remove(newUser);
+            onTrackDBContext.UserOrganizations.Remove(newOrganization);
+            onTrackDBContext.UserOrganizationalRoleAssociations.Remove(newRole);
+            return new AddUserResponse { Error = "Invalid or duplicate email." };
+        }
+
+        // add the user's tracker immediately
+        var tracker = new UserTracker { Id = Guid.NewGuid(), Organization = newOrganization, CreatedAt = DateTime.Now };
+        onTrackDBContext.UserTrackers.Add(tracker);
+
+        // add a meta property for the user's fullname
+        onTrackDBContext.UserExtraProperties.Add(new UserExtraProperty
+        {
+            Id = Guid.NewGuid(),
+            Parent = newUser,
+            PropertyKey = "FullName",
+            PropertyValue = fullname,
+        });
+        onTrackDBContext.SaveChanges();
+
+        // email the user to get started
+        await EmailController.SendEmail(email, "Please verify your OnTrack Analytics account",
+                $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}VerifyMainUserEmail?resetkey={randomResetToken}'>this link</a> to verify your account and use the platform.");
+
+        // return is pointless
+        return new AddUserResponse { Id = newUser.Id };
+    }
+
+
+    [Authorize(Policy = "CustomerPolicy")]
 	public static async Task<AddUserResponse> addUserToOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string email) {
 		// get the current user and their organization
 		var userId = UserController.GetCurrentUserId(context);

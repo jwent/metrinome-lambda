@@ -15,8 +15,9 @@ public class User {
 	public DateTime CreatedAt { get; set; }
 	public string ResetPasswordToken { get; set; }
 	public string UserState { get; set; }
+    public string? StripeCustomerId { get; set; }
 
-	[InverseProperty("Parent")]
+    [InverseProperty("Parent")]
 	public List<UserExtraProperty> ExtraProperties { get; set; }
 	[InverseProperty("OrganizationUser")]
 	public List<UserOrganizationalRoleAssociation> UserRoles { get; set; }
