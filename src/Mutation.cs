@@ -249,233 +249,246 @@ public class Mutation {
                 }
         }
 
-        public static async Task<CreateSubscriptionResponse> completeSubscription(
-            [FromServices] CustomerService customerService,
-            [FromServices] SubscriptionService subscriptionService,
-            [FromServices] PaymentMethodService paymentMethodService,
-            [FromServices] ILogger<Mutation> logger,
-            [FromServices] OnTrackDBContext onTrackDBContext,
-            string planKey,
-            string paymentMethodId,
-            string customerEmail,
-            string? customerName) {
+    public static async Task<CreateSubscriptionResponse> completeSubscription(
+        IResolveFieldContext context,
+        [FromServices] CustomerService customerService,
+        [FromServices] SubscriptionService subscriptionService,
+        [FromServices] PaymentMethodService paymentMethodService,
+        [FromServices] ILogger<Mutation> logger,
+        [FromServices] OnTrackDBContext onTrackDBContext,
+        string clientSecret,
+        string planKey,
+        string paymentMethodId) 
+    {
+        //TODO check client secret matches user.
+        //DEBUG
+        var priceId = "price_1SACseCJP1EZuX5mwgIyhPi4";
 
-		//DEBUG
-		var priceId = "price_1SACseCJP1EZuX5mwgIyhPi4";
+        var userId = UserController.GetCurrentUserId(context);
 
+        var user = onTrackDBContext.Users
+            .Include(u => u.ExtraProperties)
+            .First(u => u.Id == userId);
 
-            if (string.IsNullOrWhiteSpace(planKey))
-                    return new CreateSubscriptionResponse { Success = false, Error = "Plan is required." };
+        var fullName = user.ExtraProperties
+            .FirstOrDefault(p => p.PropertyKey == "FullName")?.PropertyValue;
 
-            var trimmedPlanKey = planKey.Trim();
-			var planDetails = StripePlanConfiguration.GetPlanDetails(trimmedPlanKey);
+        // Use these for Stripe:
+        var customerEmail = user.Email;
+        var customerName = fullName;
 
-			if (planDetails == null)
-				return new CreateSubscriptionResponse { Success = false, Error = "Invalid plan." };
+        if (string.IsNullOrWhiteSpace(planKey))
+                return new CreateSubscriptionResponse { Success = false, Error = "Plan is required." };
 
-                if (string.IsNullOrWhiteSpace(paymentMethodId))
-                        return new CreateSubscriptionResponse { Success = false, Error = "Payment method is required." };
+        var trimmedPlanKey = planKey.Trim();
+		var planDetails = StripePlanConfiguration.GetPlanDetails(trimmedPlanKey);
 
-                var trimmedPaymentMethodId = paymentMethodId.Trim();
+		if (planDetails == null)
+			return new CreateSubscriptionResponse { Success = false, Error = "Invalid plan." };
 
-                if (string.IsNullOrWhiteSpace(customerEmail))
-                        return new CreateSubscriptionResponse { Success = false, Error = "Customer email is required." };
+            if (string.IsNullOrWhiteSpace(paymentMethodId))
+                    return new CreateSubscriptionResponse { Success = false, Error = "Payment method is required." };
 
-                var trimmedCustomerEmail = customerEmail.Trim();
+            var trimmedPaymentMethodId = paymentMethodId.Trim();
 
-                if (string.IsNullOrWhiteSpace(planDetails.PlanKey))
-                        return new CreateSubscriptionResponse { Success = false, Error = "Stripe price id is not configured for the requested plan." };
+            if (string.IsNullOrWhiteSpace(customerEmail))
+                    return new CreateSubscriptionResponse { Success = false, Error = "Customer email is required." };
 
-                Customer? customer = null;
-                try {
-                        var existingCustomers = await customerService.ListAsync(new CustomerListOptions {
-                                Email = trimmedCustomerEmail,
-                                Limit = 1,
-                        });
-                        customer = existingCustomers.Data.FirstOrDefault();
-                } catch (StripeException ex) {
-                        logger.LogError(ex, "Failed to list Stripe customers.");
-                        return new CreateSubscriptionResponse {
-                                Success = false,
-                                Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
-                        };
-                }
+            var trimmedCustomerEmail = customerEmail.Trim();
 
-                var trimmedCustomerName = string.IsNullOrWhiteSpace(customerName) ? null : customerName.Trim();
+            if (string.IsNullOrWhiteSpace(planDetails.PlanKey))
+                    return new CreateSubscriptionResponse { Success = false, Error = "Stripe price id is not configured for the requested plan." };
 
-                if (customer == null) {
-                        try {
-                                customer = await customerService.CreateAsync(new CustomerCreateOptions {
-                                        Email = trimmedCustomerEmail,
-                                        Name = trimmedCustomerName,
-                                        Metadata = new Dictionary<string, string> {
-                                                { "planKey", planDetails.PlanKey },
-                                        },
-                                });
-                        } catch (StripeException ex) {
-                                logger.LogError(ex, "Failed to create Stripe customer.");
-                                return new CreateSubscriptionResponse {
-                                        Success = false,
-                                        Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
-                                };
-                        }
-                } else if (!string.IsNullOrWhiteSpace(trimmedCustomerName)) {
-                        if (!string.Equals(customer.Name, trimmedCustomerName, StringComparison.Ordinal)) {
-                                try {
-                                        customer = await customerService.UpdateAsync(customer.Id, new CustomerUpdateOptions {
-                                                Name = trimmedCustomerName,
-                                        });
-                                } catch (StripeException ex) {
-                                        logger.LogError(ex, "Failed to update Stripe customer.");
-                                        return new CreateSubscriptionResponse {
-                                                Success = false,
-                                                Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
-                                        };
-                                }
-                        }
-                }
+            Customer? customer = null;
+            try {
+                    var existingCustomers = await customerService.ListAsync(new CustomerListOptions {
+                            Email = trimmedCustomerEmail,
+                            Limit = 1,
+                    });
+                    customer = existingCustomers.Data.FirstOrDefault();
+            } catch (StripeException ex) {
+                    logger.LogError(ex, "Failed to list Stripe customers.");
+                    return new CreateSubscriptionResponse {
+                            Success = false,
+                            Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
+                    };
+            }
 
-                if (customer == null)
-                        return new CreateSubscriptionResponse { Success = false, Error = "Unable to prepare customer for subscription." };
+            var trimmedCustomerName = string.IsNullOrWhiteSpace(customerName) ? null : customerName.Trim();
 
-                try {
-                        await paymentMethodService.AttachAsync(trimmedPaymentMethodId, new PaymentMethodAttachOptions {
-                                Customer = customer.Id,
-                        });
-                } catch (StripeException ex) when (ex.StripeError?.Code == "resource_already_exists") {
-                        logger.LogDebug("Payment method already attached to customer {CustomerId}.", customer.Id);
-                } catch (StripeException ex) {
-                        logger.LogError(ex, "Failed to attach payment method to customer.");
-                        return new CreateSubscriptionResponse {
-                                Success = false,
-                                Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
-                        };
-                }
+            if (customer == null) {
+                    try {
+                            customer = await customerService.CreateAsync(new CustomerCreateOptions {
+                                    Email = trimmedCustomerEmail,
+                                    Name = trimmedCustomerName,
+                                    Metadata = new Dictionary<string, string> {
+                                            { "planKey", planDetails.PlanKey },
+                                    },
+                            });
+                    } catch (StripeException ex) {
+                            logger.LogError(ex, "Failed to create Stripe customer.");
+                            return new CreateSubscriptionResponse {
+                                    Success = false,
+                                    Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
+                            };
+                    }
+            } else if (!string.IsNullOrWhiteSpace(trimmedCustomerName)) {
+                    if (!string.Equals(customer.Name, trimmedCustomerName, StringComparison.Ordinal)) {
+                            try {
+                                    customer = await customerService.UpdateAsync(customer.Id, new CustomerUpdateOptions {
+                                            Name = trimmedCustomerName,
+                                    });
+                            } catch (StripeException ex) {
+                                    logger.LogError(ex, "Failed to update Stripe customer.");
+                                    return new CreateSubscriptionResponse {
+                                            Success = false,
+                                            Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
+                                    };
+                            }
+                    }
+            }
 
-                try {
-                        await customerService.UpdateAsync(customer.Id, new CustomerUpdateOptions {
-                                InvoiceSettings = new CustomerInvoiceSettingsOptions {
-                                        DefaultPaymentMethod = trimmedPaymentMethodId,
-                                },
-                        });
-                } catch (StripeException ex) {
-                        logger.LogError(ex, "Failed to set default payment method for customer.");
-                        return new CreateSubscriptionResponse {
-                                Success = false,
-                                Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
-                        };
-                }
+            if (customer == null)
+                    return new CreateSubscriptionResponse { Success = false, Error = "Unable to prepare customer for subscription." };
 
-                Subscription? existingSubscription = null;
-                try {
-                        var subscriptions = await subscriptionService.ListAsync(new SubscriptionListOptions {
-                                Customer = customer.Id,
-                                Status = "active",
-                                Limit = 1,
-                                Expand = new List<string> { "data.latest_invoice.payment_intent", "data.items.data.price" },
-                        });
-                        existingSubscription = subscriptions.Data.FirstOrDefault();
-                } catch (StripeException ex) {
-                        logger.LogError(ex, "Failed to list Stripe subscriptions.");
-                }
+            try {
+                    await paymentMethodService.AttachAsync(trimmedPaymentMethodId, new PaymentMethodAttachOptions {
+                            Customer = customer.Id,
+                    });
+            } catch (StripeException ex) when (ex.StripeError?.Code == "resource_already_exists") {
+                    logger.LogDebug("Payment method already attached to customer {CustomerId}.", customer.Id);
+            } catch (StripeException ex) {
+                    logger.LogError(ex, "Failed to attach payment method to customer.");
+                    return new CreateSubscriptionResponse {
+                            Success = false,
+                            Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
+                    };
+            }
 
-                var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY");
-                var publishableKeyValue = string.IsNullOrWhiteSpace(publishableKey) ? null : publishableKey.Trim();
+            try {
+                    await customerService.UpdateAsync(customer.Id, new CustomerUpdateOptions {
+                            InvoiceSettings = new CustomerInvoiceSettingsOptions {
+                                    DefaultPaymentMethod = trimmedPaymentMethodId,
+                            },
+                    });
+            } catch (StripeException ex) {
+                    logger.LogError(ex, "Failed to set default payment method for customer.");
+                    return new CreateSubscriptionResponse {
+                            Success = false,
+                            Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
+                    };
+            }
 
-                if (existingSubscription != null && existingSubscription.Items?.Data?.Any() == true) {
-                        var subscriptionItem = existingSubscription.Items.Data.First();
-                        if (subscriptionItem.Price != null && string.Equals(subscriptionItem.Price.Id, priceId, StringComparison.Ordinal)) {
-                                return new CreateSubscriptionResponse {
-                                        Success = true,
-                                        SubscriptionId = existingSubscription.Id,
-                                        CustomerId = customer.Id,
-                                        PublishableKey = publishableKeyValue,
-                                        PlanKey = planDetails.PlanKey,
-                                        AlreadySubscribed = true,
-                                };
-                        }
+            Subscription? existingSubscription = null;
+            try {
+                    var subscriptions = await subscriptionService.ListAsync(new SubscriptionListOptions {
+                            Customer = customer.Id,
+                            Status = "active",
+                            Limit = 1,
+                            Expand = new List<string> { "data.latest_invoice.payment_intent", "data.items.data.price" },
+                    });
+                    existingSubscription = subscriptions.Data.FirstOrDefault();
+            } catch (StripeException ex) {
+                    logger.LogError(ex, "Failed to list Stripe subscriptions.");
+            }
 
-                        try {
-                                var updatedSubscription = await subscriptionService.UpdateAsync(existingSubscription.Id, new SubscriptionUpdateOptions {
-                                        CancelAtPeriodEnd = false,
-                                        ProrationBehavior = "create_prorations",
-                                        Items = new List<SubscriptionItemOptions> {
-                                                new SubscriptionItemOptions {
-                                                        Id = subscriptionItem.Id,
-                                                },
-                                        },
-                                        Expand = new List<string> { "latest_invoice.payment_intent" },
-                                });
+            var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY");
+            var publishableKeyValue = string.IsNullOrWhiteSpace(publishableKey) ? null : publishableKey.Trim();
 
-                                var updateInvoice = updatedSubscription.LatestInvoice as Invoice;
-                                var updatePaymentIntent = updateInvoice?.PaymentIntent;
+            if (existingSubscription != null && existingSubscription.Items?.Data?.Any() == true) {
+                    var subscriptionItem = existingSubscription.Items.Data.First();
+                    if (subscriptionItem.Price != null && string.Equals(subscriptionItem.Price.Id, priceId, StringComparison.Ordinal)) {
+                            return new CreateSubscriptionResponse {
+                                    Success = true,
+                                    SubscriptionId = existingSubscription.Id,
+                                    CustomerId = customer.Id,
+                                    PublishableKey = publishableKeyValue,
+                                    PlanKey = planDetails.PlanKey,
+                                    AlreadySubscribed = true,
+                            };
+                    }
 
-                                return new CreateSubscriptionResponse {
-                                        Success = true,
-                                        SubscriptionId = updatedSubscription.Id,
-                                        CustomerId = customer.Id,
-                                        PublishableKey = publishableKeyValue,
-                                        PlanKey = planDetails.PlanKey,
-                                        ClientSecret = updatePaymentIntent?.ClientSecret,
-                                        RequiresAction = updatePaymentIntent?.Status == "requires_action" || updatePaymentIntent?.Status == "requires_payment_method",
-                                };
-                        } catch (StripeException ex) {
-                                logger.LogError(ex, "Failed to update Stripe subscription.");
-                                return new CreateSubscriptionResponse {
-                                        Success = false,
-                                        Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
-                                };
-                        }
-                }
+                    try {
+                            var updatedSubscription = await subscriptionService.UpdateAsync(existingSubscription.Id, new SubscriptionUpdateOptions {
+                                    CancelAtPeriodEnd = false,
+                                    ProrationBehavior = "create_prorations",
+                                    Items = new List<SubscriptionItemOptions> {
+                                            new SubscriptionItemOptions {
+                                                    Id = subscriptionItem.Id,
+                                            },
+                                    },
+                                    Expand = new List<string> { "latest_invoice.payment_intent" },
+                            });
 
-                try {
-                        var subscription = await subscriptionService.CreateAsync(new SubscriptionCreateOptions {
-                                Customer = customer.Id,
-                                Items = new List<SubscriptionItemOptions> {
-                                        new SubscriptionItemOptions {
-                                                Price = priceId,
-                                        },
-                                },
-                                PaymentBehavior = "default_incomplete",
-                                PaymentSettings = new SubscriptionPaymentSettingsOptions {
-                                        PaymentMethodTypes = new List<string> { "card" },
-                                        SaveDefaultPaymentMethod = "on_subscription",
-                                },
-                                CollectionMethod = "charge_automatically",
-                                Metadata = new Dictionary<string, string> {
-                                        { "planKey", planDetails.PlanKey },
-                                },
-                                Expand = new List<string> { "latest_invoice.payment_intent" },
-                        });
+                            var updateInvoice = updatedSubscription.LatestInvoice as Invoice;
+                            var updatePaymentIntent = updateInvoice?.PaymentIntent;
 
-                        var latestInvoice = subscription.LatestInvoice as Invoice;
-                        var paymentIntent = latestInvoice?.PaymentIntent;
+                            return new CreateSubscriptionResponse {
+                                    Success = true,
+                                    SubscriptionId = updatedSubscription.Id,
+                                    CustomerId = customer.Id,
+                                    PublishableKey = publishableKeyValue,
+                                    PlanKey = planDetails.PlanKey,
+                                    ClientSecret = updatePaymentIntent?.ClientSecret,
+                                    RequiresAction = updatePaymentIntent?.Status == "requires_action" || updatePaymentIntent?.Status == "requires_payment_method",
+                            };
+                    } catch (StripeException ex) {
+                            logger.LogError(ex, "Failed to update Stripe subscription.");
+                            return new CreateSubscriptionResponse {
+                                    Success = false,
+                                    Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
+                            };
+                    }
+            }
 
-                        if (paymentIntent == null || string.IsNullOrWhiteSpace(paymentIntent.ClientSecret)) {
-                                logger.LogError("Subscription {SubscriptionId} created without payment intent.", subscription.Id);
-                                return new CreateSubscriptionResponse {
-                                        Success = false,
-                                        Error = "Subscription created without payment intent.",
-                                };
-                        }
+            try {
+                    var subscription = await subscriptionService.CreateAsync(new SubscriptionCreateOptions {
+                            Customer = customer.Id,
+                            Items = new List<SubscriptionItemOptions> {
+                                    new SubscriptionItemOptions {
+                                            Price = priceId,
+                                    },
+                            },
+                            PaymentBehavior = "default_incomplete",
+                            PaymentSettings = new SubscriptionPaymentSettingsOptions {
+                                    PaymentMethodTypes = new List<string> { "card" },
+                                    SaveDefaultPaymentMethod = "on_subscription",
+                            },
+                            CollectionMethod = "charge_automatically",
+                            Metadata = new Dictionary<string, string> {
+                                    { "planKey", planDetails.PlanKey },
+                            },
+                            Expand = new List<string> { "latest_invoice.payment_intent" },
+                    });
 
-                        return new CreateSubscriptionResponse {
-                                Success = true,
-                                ClientSecret = paymentIntent.ClientSecret,
-                                SubscriptionId = subscription.Id,
-                                CustomerId = customer.Id,
-                                PublishableKey = publishableKeyValue,
-                                PlanKey = planDetails.PlanKey,
-                                RequiresAction = paymentIntent.Status == "requires_action" || paymentIntent.Status == "requires_payment_method",
-                        };
-                } catch (StripeException ex) {
-                        logger.LogError(ex, "Failed to create Stripe subscription.");
-                        return new CreateSubscriptionResponse {
-                                Success = false,
-                                Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
-                        };
-                }
-        }
+                    var latestInvoice = subscription.LatestInvoice as Invoice;
+                    var paymentIntent = latestInvoice?.PaymentIntent;
+
+                    if (paymentIntent == null || string.IsNullOrWhiteSpace(paymentIntent.ClientSecret)) {
+                            logger.LogError("Subscription {SubscriptionId} created without payment intent.", subscription.Id);
+                            return new CreateSubscriptionResponse {
+                                    Success = false,
+                                    Error = "Subscription created without payment intent.",
+                            };
+                    }
+
+                    return new CreateSubscriptionResponse {
+                            Success = true,
+                            ClientSecret = paymentIntent.ClientSecret,
+                            SubscriptionId = subscription.Id,
+                            CustomerId = customer.Id,
+                            PublishableKey = publishableKeyValue,
+                            PlanKey = planDetails.PlanKey,
+                            RequiresAction = paymentIntent.Status == "requires_action" || paymentIntent.Status == "requires_payment_method",
+                    };
+            } catch (StripeException ex) {
+                    logger.LogError(ex, "Failed to create Stripe subscription.");
+                    return new CreateSubscriptionResponse {
+                            Success = false,
+                            Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
+                    };
+            }
+    }
 
     public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password)
     {
