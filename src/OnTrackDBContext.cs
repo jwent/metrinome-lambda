@@ -23,29 +23,41 @@ public class OnTrackDBContext : DbContext {
 	}
 
 	protected override void OnModelCreating(ModelBuilder modelBuilder) {
-                var basicPlan = StripePlanConfiguration.GetPlanDetails(StripePlanConfiguration.BasicPlanKey);
-                var proPlan = StripePlanConfiguration.GetPlanDetails(StripePlanConfiguration.ProPlanKey);
+        var basicPlan = StripePlanConfiguration.GetPlanDetails(StripePlanConfiguration.BasicPlanKey);
+        var proPlan = StripePlanConfiguration.GetPlanDetails(StripePlanConfiguration.ProPlanKey);
 
-                modelBuilder.Entity<OrganizationalSubscriptionPlan>().HasData(
-                        new OrganizationalSubscriptionPlan {
-                                Id=Guid.NewGuid(),
-                                PlanKey=basicPlan.PlanKey,
-                                PlanName=basicPlan.Name,
-                                UsersLimitPerPlan=5,
-                                CampaignsLimitPerPlan=15,
-                                CanUseInsightAnalytics=true,
-                                IsFreePlan=false,
-                        },
-                        new OrganizationalSubscriptionPlan {
-                                Id=Guid.NewGuid(),
-                                PlanKey=proPlan.PlanKey,
-                                PlanName=proPlan.Name,
-                                UsersLimitPerPlan=1000,
-                                CampaignsLimitPerPlan=10000,
-                                CanUseInsightAnalytics=true,
-                                IsFreePlan=false,
-                        });
+        modelBuilder.Entity<OrganizationalSubscriptionPlan>().HasData(
+            new OrganizationalSubscriptionPlan 
+            {
+                Id=Guid.NewGuid(),
+                PlanKey=basicPlan.PlanKey,
+                PlanName=basicPlan.Name,
+                UsersLimitPerPlan=1,
+                CampaignsLimitPerPlan=15,
+                CanUseInsightAnalytics=false,
+                IsFreePlan=false,
+            },
+            new OrganizationalSubscriptionPlan 
+            {
+                Id=Guid.NewGuid(),
+                PlanKey=proPlan.PlanKey,
+                PlanName=proPlan.Name,
+                UsersLimitPerPlan=2,
+                CampaignsLimitPerPlan=25,
+                CanUseInsightAnalytics=true,
+                IsFreePlan=false,
+            }, 
+            new OrganizationalSubscriptionPlan
+            {
+                Id = Guid.NewGuid(),
+                PlanKey = "trial",
+                PlanName = "trialPlan",
+                UsersLimitPerPlan = 1,
+                CampaignsLimitPerPlan = 1,
+                CanUseInsightAnalytics = false,
+                IsFreePlan = true,
+            });
 
-		base.OnModelCreating(modelBuilder);
+        base.OnModelCreating(modelBuilder);
 	}
 }
