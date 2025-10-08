@@ -258,11 +258,12 @@ public class Mutation {
         [FromServices] OnTrackDBContext onTrackDBContext,
         string clientSecret,
         string planKey,
-        string paymentMethodId) 
+        string paymentMethodId,
+        string priceId) 
     {
         //TODO check client secret matches user.
         //DEBUG
-        var priceId = "price_1SACseCJP1EZuX5mwgIyhPi4";
+        //var priceId = "price_1SACseCJP1EZuX5mwgIyhPi4";
 
         var userId = UserController.GetCurrentUserId(context);
 
