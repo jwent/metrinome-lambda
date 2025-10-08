@@ -6,7 +6,32 @@ using System.Security.Claims;
 
 public class Query
 {
-        [Authorize(Policy = "CustomerPolicy")]
+	public static string DatabaseInfo([FromServices] OnTrackDBContext dbContext)
+	{
+		// Returns current database name from EF Core
+		var conn = dbContext.Database.GetDbConnection();
+		using var cmd = dbContext.Database.GetDbConnection().CreateCommand();
+		cmd.CommandText = @"
+			SELECT table_schema || '.' || table_name 
+			FROM information_schema.tables
+			WHERE table_schema = 'public'
+			ORDER BY table_name;
+		";
+
+		dbContext.Database.OpenConnection();
+		using var reader = cmd.ExecuteReader();
+		var results = new List<string>();
+		while (reader.Read())
+		{
+			results.Add(reader.GetString(0));
+		}
+		dbContext.Database.CloseConnection();
+
+		//return string.Join("\n", results);
+    	return $"Database: {conn.Database}, ConnectionString: {conn.ConnectionString}";	   
+    }
+
+	[Authorize(Policy = "CustomerPolicy")]
         public static OrganizationData getOrganization(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
                 var org = UserController.GetCurrentOrganization(context, onTrackDBContext);
                 var userdatalist = org.Users
