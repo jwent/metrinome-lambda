@@ -473,7 +473,14 @@ public class Mutation {
                             };
                     }
 
-                    return new CreateSubscriptionResponse {
+                    // Save Stripe Customer ID to user record if not already set
+                    if (string.IsNullOrWhiteSpace(user.StripeCustomerId))
+                    {
+                        user.StripeCustomerId = customer.Id;
+                          onTrackDBContext.SaveChanges();
+                    }
+
+            return new CreateSubscriptionResponse {
                             Success = true,
                             ClientSecret = paymentIntent.ClientSecret,
                             SubscriptionId = subscription.Id,
