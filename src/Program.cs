@@ -61,6 +61,10 @@ builder.Services
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 AppContext.SetSwitch("Npgsql.DisableDateTimeInfinityConversions", true);
 
+Console.WriteLine(Environment.GetEnvironmentVariable("Connect string."));
+Console.WriteLine(Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING"));
+
+
 builder.Services.AddDbContext<OnTrackDBContext>(options =>
     options.UseNpgsql(Util.ValueOrDie(Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING"))));
 
