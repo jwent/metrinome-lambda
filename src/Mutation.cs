@@ -1,19 +1,41 @@
 ﻿using Amazon.Runtime.Internal.Util;
+using Amazon.SimpleEmail;
+using Amazon.SimpleEmail.Model;
 using GraphQL;
 using GraphQL.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Stripe;
+using Stripe.TestHelpers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using StripeCustomerService = Stripe.CustomerService;
 
 public class Mutation {
     private const string StarterMonthlyPlanKey  = StripePlanConfiguration.StarterMonthlyKey;
     private const string StarterYearlyPlanKey   = StripePlanConfiguration.StarterYearlyKey;
     private const string AdvancedMonthlyPlanKey = StripePlanConfiguration.AdvancedMonthlyKey;
     private const string AdvancedYearlyPlanKey  = StripePlanConfiguration.AdvancedYearlyKey;
+
+    public static async Task<bool> SendEmail(string to, string subject, string body)
+    {
+        var ses = new AmazonSimpleEmailServiceClient(Amazon.RegionEndpoint.USEast1);
+        var request = new SendEmailRequest
+        {
+            Source = "noreply@app.ontrackanalytics.com",
+            Destination = new Destination { ToAddresses = new List<string> { to } },
+            Message = new Message
+            {
+                Subject = new Content(subject),
+                Body = new Body { Html = new Content(body) }
+            }
+        };
+        await ses.SendEmailAsync(request);
+        return true;
+    }
 
     public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
 		// find a user by email and password
@@ -109,10 +131,13 @@ public class Mutation {
             IResolveFieldContext context,
             [FromServices] OnTrackDBContext onTrackDBContext,
             [FromServices] PaymentIntentService paymentIntentService,
-			[FromServices] ILogger<Mutation> logger,
+            [FromServices] StripeCustomerService customerService,
+            [FromServices] ILogger<Mutation> logger,
             string plan)
-	{
-            return startSubscriptionCheckout(context, onTrackDBContext, paymentIntentService, logger, plan);
+    {
+        Console.WriteLine($"[+] Starting subscription checkout for plan: {plan} for user: {UserController.GetCurrentUserId(context)}");
+        return startSubscriptionCheckout(context, onTrackDBContext, paymentIntentService, customerService, logger, plan);
+
     }
 
     [Authorize(Policy = "CustomerPolicy")]
@@ -120,16 +145,22 @@ public class Mutation {
 		IResolveFieldContext context, 
 		[FromServices] OnTrackDBContext onTrackDBContext,
         [FromServices] PaymentIntentService paymentIntentService,
-		[FromServices] ILogger<Mutation> logger,
+        [FromServices] StripeCustomerService customerService,
+        [FromServices] ILogger<Mutation> logger,
         string plan) 
 	{
-			
-		var userId = UserController.GetCurrentUserId(context);
+        var userId = UserController.GetCurrentUserId(context);
 		var user = onTrackDBContext.Users
-				.Include(u => u.Organization.SubscriptionPlan)
+                .Include(u => u.ExtraProperties)
+                .Include(u => u.Organization.SubscriptionPlan)
 				.First(u => u.Id == userId);
 
-		if (string.IsNullOrWhiteSpace(plan))
+        var customerEmail = user.Email?.Trim();
+        var fullName = user.ExtraProperties
+            .FirstOrDefault(p => p.PropertyKey == "FullName")
+            ?.PropertyValue?.Trim();
+
+        if (string.IsNullOrWhiteSpace(plan))
 			return new CreatePaymentIntentResponse { Success = false, Error = "missing plan" };
 
 		plan = plan.Trim();
@@ -143,29 +174,45 @@ public class Mutation {
 
 		OrganizationalSubscriptionPlan? selectedPlan;
 		try {
-				selectedPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, plan);
-		} catch (InvalidOperationException) {
-			return new CreatePaymentIntentResponse { Success = false, Error = "plan unavailable" };
+		    selectedPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, plan);
+		} 
+        catch (InvalidOperationException) {
+		    return new CreatePaymentIntentResponse { Success = false, Error = "plan unavailable" };
 		}
 
 		user.Organization.SubscriptionPlan = selectedPlan;
 		onTrackDBContext.SaveChanges();
 
-		var planDetails = SubscriptionPlanOptions[plan];
+        var stripeCustomer = await customerService.CreateAsync(new CustomerCreateOptions
+        {
+            Email = customerEmail,   // 👈 critical: this is what shows in Stripe dashboard
+            Name = fullName,
+            Metadata = new Dictionary<string, string>
+            {
+                { "ontrack_user_id", user.Id.ToString() }
+                // you can also add plan info etc. here if useful
+            }
+        });
+
+
+        var planDetails = SubscriptionPlanOptions[plan];
 
 		var options = new PaymentIntentCreateOptions
 		{
 			Amount = planDetails.AmountCents,
 			Currency = planDetails.Currency,
-			AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
+            ReceiptEmail = customerEmail,
+            Customer = stripeCustomer.Id,
+
+            AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
 			{
 				Enabled = true,
 			},
 			Metadata = new Dictionary<string, string>
-		{
-			{ "planKey", planDetails.PlanKey },
-			{ "userId", user.Id.ToString() }
-		}
+		    {
+			    { "planKey", planDetails.PlanKey },
+			    { "userId", user.Id.ToString() }
+		    }
     };
 
     try
@@ -254,7 +301,7 @@ public class Mutation {
     [Authorize(Policy = "CustomerPolicy")]
     public static async Task<CreateSubscriptionResponse> completeSubscription(
         IResolveFieldContext context,
-        [FromServices] CustomerService customerService,
+        [FromServices] StripeCustomerService customerService,
         [FromServices] SubscriptionService subscriptionService,
         [FromServices] PaymentMethodService paymentMethodService,
         [FromServices] ILogger<Mutation> logger,
@@ -349,24 +396,34 @@ public class Mutation {
             logger.LogDebug("Payment method already attached to customer {CustomerId}.", customer.Id);
         }
 
-        await customerService.UpdateAsync(customer.Id, new CustomerUpdateOptions
+        // 2️⃣ Attach the payment method the user entered
+        await paymentMethodService.AttachAsync(paymentMethodId, new PaymentMethodAttachOptions
         {
-            InvoiceSettings = new CustomerInvoiceSettingsOptions
-            {
-                DefaultPaymentMethod = trimmedPaymentMethodId,
-            },
+            Customer = customer.Id,
         });
 
-        // 🔹 Create subscription with conditional trial
+        await customerService.UpdateAsync(customer.Id, new CustomerUpdateOptions
+        {
+            Email = trimmedCustomerEmail,
+            Name = customerName?.Trim(),
+            InvoiceSettings = new CustomerInvoiceSettingsOptions
+            {
+                DefaultPaymentMethod = paymentMethodId
+            }
+        });
+
+        // 🔹 Create subscription with con1ditional trial
         try
         {
             var subscriptionOptions = new SubscriptionCreateOptions
             {
                 Customer = customer.Id,
+                DefaultPaymentMethod = paymentMethodId,
+                TrialPeriodDays = trialDays,
                 Items = new List<SubscriptionItemOptions>
-            {
-                new SubscriptionItemOptions { Price = priceId },
-            },
+                {
+                    new SubscriptionItemOptions { Price = priceId },
+                },
                 PaymentBehavior = "default_incomplete",
                 PaymentSettings = new SubscriptionPaymentSettingsOptions
                 {
@@ -375,13 +432,10 @@ public class Mutation {
                 },
                 CollectionMethod = "charge_automatically",
                 Metadata = new Dictionary<string, string>
-            {
-                { "planKey", planDetails.PlanKey },
-            },
+                {
+                    { "planKey", planDetails.PlanKey },
+                },
                 Expand = new List<string> { "latest_invoice.payment_intent" },
-
-                // 🕒 Conditional trial
-                TrialPeriodDays = trialDays
             };
 
             var subscription = await subscriptionService.CreateAsync(subscriptionOptions);
@@ -389,13 +443,18 @@ public class Mutation {
             var latestInvoice = subscription.LatestInvoice as Invoice;
             var paymentIntent = latestInvoice?.PaymentIntent;
 
+            var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY")?.Trim();
+
             if (paymentIntent == null || string.IsNullOrWhiteSpace(paymentIntent.ClientSecret))
             {
                 logger.LogError("Subscription {SubscriptionId} created without payment intent.", subscription.Id);
                 return new CreateSubscriptionResponse
                 {
                     Success = true,
-                    Error = "Subscription created without payment intent.",
+                    SubscriptionId = subscription.Id,
+                    CustomerId = customer.Id,
+                    PublishableKey = publishableKey,
+                    PlanKey = planDetails.PlanKey,
                 };
             }
 
@@ -404,8 +463,6 @@ public class Mutation {
                 user.StripeCustomerId = customer.Id;
                 onTrackDBContext.SaveChanges();
             }
-
-            var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY")?.Trim();
 
             return new CreateSubscriptionResponse
             {
@@ -433,6 +490,7 @@ public class Mutation {
 
     public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password)
     {
+        // Debugger.Break();
         // find a user by email
         var possibleUser = onTrackDBContext.Users
                 .Where(u => u.Email == email)
@@ -593,11 +651,18 @@ public class Mutation {
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 		}
 
-		await EmailController.SendEmail(email, "You've been invited to an OnTrack Analytics organization",
-				$"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}SignUpOrgUser?resetkey={randomResetToken}'>this link</a> to register your account and join the organization.");
+        var baseUrl = Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")?.TrimEnd('/');
 
-		// response is only for success
-		return new AddUserResponse { Id=newUser.Id };
+        var body = $"Please follow <a href='{baseUrl}/signuporguser/?resetkey={randomResetToken}'>this link</a> to register your account and join the organization.";
+
+        await EmailController.SendEmail(
+            email,
+            "You've been invited to an OnTrack Analytics organization",
+            body
+        );
+
+        // response is only for success
+        return new AddUserResponse { Id=newUser.Id };
 	}
 
 	public static AddUserResponse registerNewOrganizationalUser(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken, string fullname, string password) {
@@ -783,3 +848,4 @@ public class Mutation {
 		return campaignId;
 	}
 }
+

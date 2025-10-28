@@ -31,10 +31,10 @@ public static class StripePlanConfiguration
                 new StripePlanDetails
                 {
                     PlanKey = StarterMonthlyKey,
-                    Name = "OnTrack Starter Plan ($19/mo)",
+                    Name = "OnTrack Starter Plan ($299/mo)",
                     PriceId = Environment.GetEnvironmentVariable("STRIPE_STARTER_MONTHLY_PRICE_ID")
                               ?? "price_1SACseCJP1EZuX5mwgIyhPi4",
-                    AmountCents = 1900,
+                    AmountCents = 29900,
                     Currency = "usd",
                 }
             },
@@ -43,10 +43,10 @@ public static class StripePlanConfiguration
                 new StripePlanDetails
                 {
                     PlanKey = StarterYearlyKey,
-                    Name = "OnTrack Starter Plan ($190/yr)",
+                    Name = "OnTrack Starter Plan ($2,990/yr)",
                     PriceId = Environment.GetEnvironmentVariable("STRIPE_STARTER_YEARLY_PRICE_ID")
                               ?? "price_1SLPHfCJP1EZuX5mr570QHOh",
-                    AmountCents = 19000,
+                    AmountCents = 299000,
                     Currency = "usd",
                 }
             },
@@ -55,10 +55,10 @@ public static class StripePlanConfiguration
                 new StripePlanDetails
                 {
                     PlanKey = AdvancedMonthlyKey,
-                    Name = "OnTrack Advanced Plan ($49/mo)",
+                    Name = "OnTrack Advanced Plan ($499/mo)",
                     PriceId = Environment.GetEnvironmentVariable("STRIPE_ADVANCED_MONTHLY_PRICE_ID")
                               ?? "price_1SACttCJP1EZuX5mz9qWK7e0",
-                    AmountCents = 4900,
+                    AmountCents = 49900,
                     Currency = "usd",
                 }
             },
@@ -67,32 +67,29 @@ public static class StripePlanConfiguration
                 new StripePlanDetails
                 {
                     PlanKey = AdvancedYearlyKey,
-                    Name = "OnTrack Advanced Plan ($490/yr)",
+                    Name = "OnTrack Advanced Plan ($4,990/yr)",
                     PriceId = Environment.GetEnvironmentVariable("STRIPE_ADVANCED_YEARLY_PRICE_ID")
                               ?? "price_1SLPTSCJP1EZuX5mXr0QDNmw",
-                    AmountCents = 49000,
+                    AmountCents = 490000,
                     Currency = "usd",
                 }
             },
         });
 
-    public static bool TryGetPlanDetails(string planKey, out StripePlanDetails details)
-        {
-                if (string.IsNullOrWhiteSpace(planKey))
-                {
-                        details = default!;
-                        return false;
-                }
-
-                return Plans.TryGetValue(planKey.Trim(), out details!);
-        }
-
         public static StripePlanDetails GetPlanDetails(string planKey)
         {
-                if (!TryGetPlanDetails(planKey, out var details))
-                        throw new KeyNotFoundException($"Unknown Stripe plan '{planKey}'.");
-                return details;
+            if (string.IsNullOrWhiteSpace(planKey))
+                throw new ArgumentException("Plan key cannot be null or whitespace.", nameof(planKey));
+
+            if (!Plans.TryGetValue(planKey.Trim(), out var details))
+                throw new KeyNotFoundException($"Unknown Stripe plan '{planKey}'.");
+
+            Console.WriteLine($"[Stripe] Retrieved plan details for '{planKey}': " +
+                              $"planKey={planKey}, Name={details.Name}, PriceId={details.PriceId}, Amount={details.AmountCents}");
+
+            return details;
         }
 
-        public static IReadOnlyCollection<StripePlanDetails> GetAllPlans() => (IReadOnlyCollection<StripePlanDetails>)Plans.Values;
+
+    public static IReadOnlyCollection<StripePlanDetails> GetAllPlans() => (IReadOnlyCollection<StripePlanDetails>)Plans.Values;
 }

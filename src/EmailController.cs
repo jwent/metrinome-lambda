@@ -5,11 +5,13 @@ using Amazon.SimpleEmail.Model;
 
 public class EmailController {
 	public static async Task<string?> SendEmail(string toEmail, string emailSubject, string emailHtmlContent) {
+		/*
 		if (Util.IsEnvironmentStage("LOCALTEST")) {
 			Console.WriteLine($"[!] MOCK email to address: {toEmail}, writing to ./last_ses_email.mock.txt");
 			File.WriteAllText("last_ses_email.mock.txt", $"to:{toEmail}\nsub:{emailSubject}\n{emailHtmlContent}\n\n\n");
 			return null;
 		}
+		*/
 
 		Console.WriteLine($"[i] sending email to address: {toEmail}");
 		try {
