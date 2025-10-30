@@ -20,6 +20,26 @@ public class Mutation {
     private const string AdvancedMonthlyPlanKey = StripePlanConfiguration.AdvancedMonthlyKey;
     private const string AdvancedYearlyPlanKey  = StripePlanConfiguration.AdvancedYearlyKey;
 
+    //[Authorize(Policy = "AdminPolicy")] // optional; adjust to CustomerPolicy if you prefer
+    public static async Task<SuccessResponse> runTrialExpirationTest([FromServices] OnTrackDBContext onTrackDBContext)
+    {
+        try
+        {
+            Console.WriteLine("[i] Running trial expiration check via GraphQL mutation...");
+
+            // Call the existing routine from EmailController
+            await EmailController.CheckTrialExpirationsAsync(onTrackDBContext);
+
+            Console.WriteLine("[✅] Trial expiration test complete via GraphQL.");
+            return new SuccessResponse { Success = true };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[!] Error running trial expiration check: {ex}");
+            return new SuccessResponse { Success = false };
+        }
+    }
+
     public static async Task<bool> SendEmail(string to, string subject, string body)
     {
         var ses = new AmazonSimpleEmailServiceClient(Amazon.RegionEndpoint.USEast1);

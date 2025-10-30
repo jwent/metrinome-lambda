@@ -10,7 +10,8 @@ public class User {
 
 	public Guid Id { get; set; }
 	public UserOrganization Organization { get; set; }
-	public string Email { get; set; }
+    public Guid OrganizationId { get; set; }
+    public string Email { get; set; }
 	public string Password { get; set; }
 	public DateTime CreatedAt { get; set; }
 	public string ResetPasswordToken { get; set; }
@@ -42,8 +43,9 @@ public class UserOrganization {
 	public Guid CreatorId { get; set; }
 	public DateTime CreatedAt { get; set; }
 	public OrganizationalSubscriptionPlan? SubscriptionPlan { get; set; }
+    public DateTime? SubscriptionTrialStartDate { get; set; }
 
-	[InverseProperty("Organization")]
+    [InverseProperty("Organization")]
 	public List<User> Users { get; set; }
 	[InverseProperty("Organization")]
 	public List<UserTracker> OrganizationalTrackers { get; set; }

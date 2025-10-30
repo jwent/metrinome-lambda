@@ -12,6 +12,14 @@ using System.Text;
 
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Logging.ClearProviders(); // Remove default noisy providers
+builder.Logging.AddConsole();
+builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
+builder.Logging.AddFilter("System", LogLevel.Warning);
+builder.Logging.AddFilter("GraphQL", LogLevel.Warning);
+
+
 //DEBUG
 builder.WebHost.UseUrls("http://localhost:8020");
 
