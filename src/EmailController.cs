@@ -31,7 +31,7 @@ public class EmailController
                     },
                     Subject = new Content { Charset = "UTF-8", Data = emailSubject }
                 },
-                Source = "noreply@app.ontrackanalytics.com",
+                Source = "noreply@metrinome.io",
             });
 
             Console.WriteLine($"[+] SES messageId: {res.MessageId}");
