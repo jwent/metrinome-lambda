@@ -105,24 +105,18 @@ public class Query
 		return new PostbackCodes
 		{
 			PagePostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
-				(function(){
+				(function () {
 					var match = document.cookie.match('(^|;)\\s*ontrack-clid\\s*=\\s*([^;]+)');
 					var clid = match ? match.pop() : '';
-
 					if (!clid) {
 						console.warn('Metrinome postback: no valid clid found');
 						return;
 					}
-
-					fetch('https://ping.ontrackanalytics.com/postback?clid=' + encodeURIComponent(clid), {
-						mode: 'no-cors'
-					});
-
+					fetch('https://ping.ontrackanalytics.com/postback?clid=' + encodeURIComponent(clid), { mode: 'no-cors' });
 					console.log('Metrinome postback fired:', clid);
-					} catch (err) {
-						console.error('Metrinome postback error:', err);
-					}
-				})();</script>"),
+				}
+				)();
+				</script>"),
 			ButtonPostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
 				(function(){
 					document.getElementById('{id}').addEventListener('click',

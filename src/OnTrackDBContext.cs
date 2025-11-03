@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using GraphQL;
 using GraphQL.Authorization;
+using System.Diagnostics;
 
 public class OnTrackDBContext : DbContext
 {
@@ -19,8 +20,35 @@ public class OnTrackDBContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.UseNpgsql(Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING") ?? "");
-        // optionsBuilder.LogTo(Console.WriteLine); // Uncomment to debug SQL queries
+        //Debugger.Break();
+        var connectString = Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING");
+
+        if (string.IsNullOrWhiteSpace(connectString))
+        {
+            var error = "ONTRACK_DATABASE_CONNECT_STRING environment variable is missing or empty.";
+            Console.WriteLine(error);
+            throw new InvalidOperationException(error);
+        }
+
+        try
+        {
+            optionsBuilder
+                .UseNpgsql(connectString)
+                .EnableDetailedErrors()
+                .EnableSensitiveDataLogging() // optional; remove for production
+                .LogTo(Console.WriteLine, Microsoft.Extensions.Logging.LogLevel.Information);
+
+            // Test the connection right away (optional but useful)
+            using var testConnection = new Npgsql.NpgsqlConnection(connectString);
+            testConnection.Open();
+            Console.WriteLine($"Connected to database: {testConnection.Database} on {testConnection.Host}");
+            testConnection.Close();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to connect to the database. Error: {ex.Message}");
+            throw new InvalidOperationException("Unable to connect to the database. Check your connection string and network.", ex);
+        }
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

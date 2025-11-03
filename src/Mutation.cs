@@ -10,6 +10,7 @@ using Stripe.TestHelpers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Security.Claims;
 using System.Text;
 using System.Threading;
 using StripeCustomerService = Stripe.CustomerService;
@@ -45,7 +46,7 @@ public class Mutation {
         var ses = new AmazonSimpleEmailServiceClient(Amazon.RegionEndpoint.USEast1);
         var request = new SendEmailRequest
         {
-            Source = "noreply@app.ontrackanalytics.com",
+            Source = "noreply@noreply@metrinome.io",
             Destination = new Destination { ToAddresses = new List<string> { to } },
             Message = new Message
             {
@@ -79,28 +80,101 @@ public class Mutation {
 		return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
 	}
 
-	public static SuccessResponse forgotPassword([FromServices] OnTrackDBContext onTrackDBContext, string email) {
-		// find a user by email
-		var user = onTrackDBContext.Users
-				.Where(u => u.UserState == "Active" && u.Email == email)
-				.FirstOrDefault();
-		if (user == null) {
-			Console.WriteLine("[!] user not found");
-			return new SuccessResponse { Success=true };
-		}
+    public static async Task<SuccessResponse> forgotPassword(
+        [FromServices] OnTrackDBContext onTrackDBContext,
+        string email)
+    {
+        //Debugger.Break();
+        Console.WriteLine($"[DB INFO] Server: {onTrackDBContext.Database.GetDbConnection().DataSource}");
+        var conn = onTrackDBContext.Database.GetDbConnection();
+        Console.WriteLine($"[DB DEBUG] Provider={onTrackDBContext.Database.ProviderName ?? "(none)"}");
+        Console.WriteLine($"[DB DEBUG] DataSource='{conn.DataSource}', Database='{conn.Database}'");
+        Console.WriteLine($"[DB INFO] ConnectionString={conn.ConnectionString}");
+        Console.WriteLine($"[DB INFO] State={conn.State}");
+        conn.Open();
+        Console.WriteLine($"[DB INFO] Host after open: {((Npgsql.NpgsqlConnection)conn).Host}");
 
 
-		// generate a random token so that they can reset their password
-		var randomResetToken = Util.GetSecureRandomString(64); // 256 bits of security
-		user.ResetPasswordToken = randomResetToken;
-		// save the property
-		onTrackDBContext.SaveChanges();
 
+        // find a user by email
+        var query = onTrackDBContext.Users
+            .Where(u => u.Email == email);
 
-		// TODO: email the user about their forgotten password
+        // Print the SQL EF Core will generate
+        Console.WriteLine("[SQL] " + query.ToQueryString());
 
-		return new SuccessResponse { Success=true };
-	}
+        // Execute it
+        var user = query.FirstOrDefault();
+
+        if (user == null)
+        {
+            Console.WriteLine("[!] user not found");
+            // Return success even if not found (avoid exposing which emails exist)
+            return new SuccessResponse { Success = true };
+        }
+
+        // generate a random token so that they can reset their password
+        var randomResetToken = Util.GetSecureRandomString(64); // 256 bits of security
+        user.ResetPasswordToken = randomResetToken;
+        onTrackDBContext.SaveChanges();
+
+        // --- EMAIL SETUP ---
+        var resetUrl = $"https://app.metrinome.io/actualresetpassword?token={randomResetToken}";
+        var sender = "noreply@metrinome.io"; // must be verified in SES
+        var subject = "Reset your OnTrack Analytics password";
+        var bodyHtml = $@"
+            <html>
+                <body style='font-family: Arial, sans-serif;'>
+                    <h2>Password Reset Requested</h2>
+                    <p>Hello {user.Email ?? "there"},</p>
+                    <p>We received a request to reset your password for your OnTrack Analytics account.</p>
+                    <p>
+                        Click the link below to reset it:<br/>
+                        <a href='{resetUrl}' style='color:#2563EB; font-weight:bold;'>{resetUrl}</a>
+                    </p>
+                    <p>If you didn’t request this, you can safely ignore this email.</p>
+                    <br/>
+                    <p>— The OnTrack Team</p>
+                </body>
+            </html>";
+
+        var bodyText = $"Reset your password using this link: {resetUrl}";
+
+        // --- SEND EMAIL VIA SES ---
+        try
+        {
+            using var sesClient = new AmazonSimpleEmailServiceClient(Amazon.RegionEndpoint.USEast1);
+
+            var sendRequest = new SendEmailRequest
+            {
+                Source = sender,
+                Destination = new Destination
+                {
+                    ToAddresses = new List<string> { email }
+                },
+                Message = new Message
+                {
+                    Subject = new Content(subject),
+                    Body = new Body
+                    {
+                        Html = new Content(bodyHtml),
+                        Text = new Content(bodyText)
+                    }
+                }
+            };
+
+            var response = await sesClient.SendEmailAsync(sendRequest);
+            Console.WriteLine($"[+] Forgot password email sent to {email}, MessageId: {response.MessageId}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[!] Failed to send forgot-password email: {ex.Message}");
+            // You might log this in CloudWatch but still return success for security
+        }
+
+        return new SuccessResponse { Success = true };
+    }
+
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static SuccessOrErrorResponse updateUserFullName(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string fullname) {
@@ -507,8 +581,99 @@ public class Mutation {
         }
     }
 
+    [Authorize(Policy = "CustomerPolicy")]
+    public static async Task<SuccessOrErrorResponse> cancelSubscription(
+        [FromServices] OnTrackDBContext onTrackDBContext,
+        [FromServices] SubscriptionService subscriptionService,
+        [FromServices] StripeCustomerService customerService,
+        IResolveFieldContext context)
+    {
+        try
+        {
+            // 🔹 Get ClaimsPrincipal from the GraphQL context
+            //Debugger.Break();
+            var userId = UserController.GetCurrentUserId(context);
+            var user = onTrackDBContext.Users
+                    .Include(u => u.ExtraProperties)
+                    .Include(u => u.Organization.SubscriptionPlan)
+                    .First(u => u.Id == userId);
 
-    public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password)
+            var email = user.Email?.Trim();
+            var fullName = user.ExtraProperties
+                .FirstOrDefault(p => p.PropertyKey == "FullName")
+                ?.PropertyValue?.Trim();
+
+            var claimsPrincipal = user;
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                Console.WriteLine("[cancelSubscription] Missing email claim.");
+                return new SuccessOrErrorResponse { Success = false, Error = "User not authenticated." };
+            }
+
+            // 🔹 Lookup DB user
+            var dbUser = await onTrackDBContext.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Email == email && u.UserState == "Active");
+
+            if (dbUser == null)
+            {
+                Console.WriteLine($"[cancelSubscription] No active user found for {email}");
+                return new SuccessOrErrorResponse { Success = false, Error = "User not found." };
+            }
+
+            if (string.IsNullOrWhiteSpace(dbUser.StripeCustomerId))
+            {
+                Console.WriteLine($"[cancelSubscription] User {email} has no StripeCustomerId");
+                return new SuccessOrErrorResponse { Success = false, Error = "No Stripe customer ID found." };
+            }
+
+            // 🔹 Get active subscription from Stripe
+            var subscriptions = await subscriptionService.ListAsync(new SubscriptionListOptions
+            {
+                Customer = dbUser.StripeCustomerId,
+                Status = "active",
+                Limit = 1
+            });
+
+            if (subscriptions.Data.Count == 0)
+            {
+                Console.WriteLine($"[cancelSubscription] No active subscriptions found for {email}");
+                return new SuccessOrErrorResponse { Success = false, Error = "No active subscriptions found." };
+            }
+
+            var subscriptionId = subscriptions.Data.First().Id;
+
+            // 🔹 Cancel subscription
+            var canceled = await subscriptionService.CancelAsync(subscriptionId);
+            Console.WriteLine($"[cancelSubscription] Subscription {subscriptionId} canceled for {email}");
+
+            // 🔹 Update DB if necessary
+            var org = await onTrackDBContext.UserOrganizations
+                .FirstOrDefaultAsync(o => o.Id == dbUser.OrganizationId);
+
+            if (org != null)
+            {
+                org.SubscriptionPlan = null;
+                await onTrackDBContext.SaveChangesAsync();
+            }
+
+            return new SuccessOrErrorResponse { Success = true };
+        }
+        catch (StripeException ex)
+        {
+            Console.WriteLine($"[cancelSubscription] Stripe error: {ex.Message}");
+            return new SuccessOrErrorResponse { Success = false, Error = ex.Message };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[cancelSubscription] Unexpected error: {ex.Message}");
+            return new SuccessOrErrorResponse { Success = false, Error = "An unexpected error occurred." };
+        }
+    }
+
+
+public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password)
     {
         // Debugger.Break();
         // find a user by email
