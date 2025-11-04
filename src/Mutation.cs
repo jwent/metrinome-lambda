@@ -895,7 +895,8 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
 
 	public static LoginUserResponse verifyUserEmail(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken) {
 		// assert that the resetToken is not invalid
-		if (resetToken.Length < 8)
+        Debugger.Break();
+        if (resetToken.Length < 8)
 			return new LoginUserResponse { Error="Invalid or missing user." };
 		
 		// find a user by email
@@ -919,7 +920,35 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
 		return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
 	}
 
-	[Authorize(Policy = "CustomerPolicy")]
+    public static LoginUserResponse verifyUserToken(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken)
+    {
+        // assert that the resetToken is not invalid
+        Debugger.Break();
+        if (resetToken.Length < 8)
+            return new LoginUserResponse { Error = "Invalid or missing user." };
+
+        // find a user by email
+        var user = onTrackDBContext.Users
+                .Where(u => u.ResetPasswordToken == resetToken)
+                .Include(u => u.Organization)
+                .FirstOrDefault();
+
+        if (user == null)
+        {
+            Console.WriteLine("[!] new user not found");
+            return new LoginUserResponse { Error = "Invalid or missing user." };
+        }
+
+        user.ResetPasswordToken = ""; // clear the reset token to prevent reuse
+
+        // save the properties
+        onTrackDBContext.SaveChanges();
+
+        // return token
+        return new LoginUserResponse { BearerToken = Util.SignAuthToken(user) };
+    }
+
+    [Authorize(Policy = "CustomerPolicy")]
 	public static Guid? createCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, TrackingCampaignSubmission campaign) {
 		var userId = UserController.GetCurrentUserId(context);
 		var user = onTrackDBContext.Users
