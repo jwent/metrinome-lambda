@@ -555,6 +555,7 @@ public class Mutation {
             if (string.IsNullOrWhiteSpace(user.StripeCustomerId))
             {
                 user.StripeCustomerId = customer.Id;
+                user.UserState = "subscribed";
                 onTrackDBContext.SaveChanges();
             }
 
@@ -590,8 +591,6 @@ public class Mutation {
     {
         try
         {
-            // 🔹 Get ClaimsPrincipal from the GraphQL context
-            //Debugger.Break();
             var userId = UserController.GetCurrentUserId(context);
             var user = onTrackDBContext.Users
                     .Include(u => u.ExtraProperties)
@@ -1061,5 +1060,77 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
 
 		return campaignId;
 	}
+
+    [Authorize(Policy = "CustomerPolicy")]
+    public static async Task<SuccessOrErrorResponse> changeSubscription(
+        IResolveFieldContext context,
+        [FromServices] OnTrackDBContext onTrackDBContext,
+        [FromServices] SubscriptionService subscriptionService,
+        string planKey)
+    {
+        try
+        {
+            // Get user email from JWT claims
+            var userId = UserController.GetCurrentUserId(context);
+            var user = onTrackDBContext.Users
+                    .Include(u => u.ExtraProperties)
+                    .Include(u => u.Organization.SubscriptionPlan)
+                    .First(u => u.Id == userId);
+
+            var email = user.Email?.Trim();
+
+            if (string.IsNullOrEmpty(email))
+                return new SuccessOrErrorResponse { Success = false, Error = "User not authenticated." };
+
+            // Find user in DB
+            var dbUser = onTrackDBContext.Users.FirstOrDefault(u => u.Email == email);
+            if (dbUser == null || string.IsNullOrEmpty(dbUser.StripeCustomerId))
+                return new SuccessOrErrorResponse { Success = false, Error = "Stripe customer not found." };
+
+            // Lookup the Stripe plan
+            var plan = await onTrackDBContext.OrganizationalSubscriptionPlans.AsNoTracking().FirstOrDefaultAsync(p => p.PlanKey == planKey);
+            if (plan == null)
+                return new SuccessOrErrorResponse { Success = false, Error = $"Unknown plan '{planKey}'." };
+
+            // Retrieve active subscription
+            var subs = await subscriptionService.ListAsync(new SubscriptionListOptions
+            {
+                Customer = dbUser.StripeCustomerId,
+                Status = "active",
+                Limit = 1
+            });
+
+            var currentSub = subs.Data.FirstOrDefault();
+            if (currentSub == null)
+                return new SuccessOrErrorResponse { Success = false, Error = "No active subscription found." };
+
+            var planDetails = StripePlanConfiguration.GetPlanDetails(planKey);
+            // Update subscription
+            var updateOptions = new SubscriptionUpdateOptions
+            {
+                CancelAtPeriodEnd = false, // apply immediately
+                ProrationBehavior = "create_prorations",
+                Items = new List<SubscriptionItemOptions>
+                {
+                    new SubscriptionItemOptions
+                    {
+                        Id = currentSub.Items.Data[0].Id,
+                        Plan = planDetails.PriceId,
+                    }
+                }
+            };
+
+            var updatedSub = await subscriptionService.UpdateAsync(currentSub.Id, updateOptions);
+            Console.WriteLine($"[Stripe] Updated subscription {updatedSub.Id} → plan {plan.PlanKey}");
+
+            return new SuccessOrErrorResponse { Success = true };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[!] Failed to change subscription: {ex.Message}");
+            return new SuccessOrErrorResponse { Success = false, Error = ex.Message };
+        }
+    }
+
 }
 

@@ -1,7 +1,3 @@
-
-
-
-
 public class UserData {
 	public string? Email { get; set; }
 	public DateTime? CreatedAt { get; set; }
@@ -231,5 +227,12 @@ public class StatPoint {
 	public string? Position { get; set; }
 	public int Count { get; set; }
 }
-
-
+public class CurrentSubscriptionResponse
+{
+    public bool? Success { get; set; }  // aligns with other responses like SuccessResponse
+    public string? Status { get; set; } // e.g. "active", "canceled", "none"
+    public string? PlanName { get; set; }
+    public string? PlanKey { get; set; }
+    public string? Error { get; set; }
+	public string? CustomerName { get; set; }
+}

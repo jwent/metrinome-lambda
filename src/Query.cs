@@ -1,7 +1,6 @@
-using GraphQL;
-using GraphQL.Authorization;
+﻿using GraphQL;
 using Microsoft.EntityFrameworkCore;
-using System.Linq;
+using Stripe;
 using System.Security.Claims;
 
 public class Query
@@ -481,4 +480,76 @@ public class Query
 			Stats=results,
 		};
 	}
+
+    [Authorize(Policy = "CustomerPolicy")]
+    public static async Task<CurrentSubscriptionResponse> getCurrentSubscription(
+        IResolveFieldContext context,
+        [FromServices] OnTrackDBContext onTrackDBContext,
+        [FromServices] SubscriptionService subscriptionService,
+        [FromServices] CustomerService customerService)
+    {
+        try
+        {
+            var userId = UserController.GetCurrentUserId(context);
+
+            var user = onTrackDBContext.Users
+                .Include(u => u.Organization)
+                .FirstOrDefault(u => u.Id == userId);
+
+            if (user == null)
+            {
+                return new CurrentSubscriptionResponse
+                {
+                    Success = false,
+                    Error = "User not found."
+                };
+            }
+
+            var userEmail = user.Email;
+            
+			if (string.IsNullOrEmpty(userEmail))
+                return new CurrentSubscriptionResponse { Status = "no email" };
+
+            // 🔹 Retrieve active subscription
+            var subs = await subscriptionService.ListAsync(new SubscriptionListOptions
+            {
+                Customer = user.StripeCustomerId,
+                Limit = 1,
+                Status = "all"
+            });
+
+            var subscription = subs.Data.FirstOrDefault();
+            if (subscription == null)
+                return new CurrentSubscriptionResponse { Status = "none" };
+
+            var planKey = subscription.Metadata.ContainsKey("planKey")
+                ? subscription.Metadata["planKey"]
+                : "unknown";
+
+            string customerName = "unknown";
+            if (!string.IsNullOrEmpty(user.StripeCustomerId))
+            {
+                var customer = await customerService.GetAsync(user.StripeCustomerId);
+                if (customer != null && !string.IsNullOrEmpty(customer.Name))
+                    customerName = customer.Name;
+            }
+
+            return new CurrentSubscriptionResponse
+            {
+                PlanKey = planKey,
+                Status = subscription.Status ?? "unknown",
+                CustomerName = customerName
+            };
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[!] getCurrentSubscription error: {ex.Message}");
+			return new CurrentSubscriptionResponse
+			{
+				PlanKey = null,
+				Status = "error",
+				CustomerName = null
+			};
+        }
+    }
 }
