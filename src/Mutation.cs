@@ -72,9 +72,12 @@ public class Mutation {
 		// verify password
 		if (!Util.VerifyHash(password, user.Password))
 			return new LoginUserResponse { Error="Invalid email or password." };
-		// if they don't have an active account, no entry
-		if (user.UserState != "Active")
-			return new LoginUserResponse { Error="Account disabled." };
+        // if they don't have an active account, no entry
+        if (!user.UserState.Equals("Active", StringComparison.OrdinalIgnoreCase) &&
+            !user.UserState.Equals("subscribed", StringComparison.OrdinalIgnoreCase))
+        {
+            return new LoginUserResponse { Error = "Account disabled." };
+        }
 
 		// return token
 		return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
@@ -1122,6 +1125,8 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
 
             var updatedSub = await subscriptionService.UpdateAsync(currentSub.Id, updateOptions);
             Console.WriteLine($"[Stripe] Updated subscription {updatedSub.Id} → plan {plan.PlanKey}");
+
+            //Update subscription status in db
 
             return new SuccessOrErrorResponse { Success = true };
         }
