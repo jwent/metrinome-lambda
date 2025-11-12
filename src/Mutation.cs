@@ -87,7 +87,6 @@ public class Mutation {
         [FromServices] OnTrackDBContext onTrackDBContext,
         string email)
     {
-        //Debugger.Break();
         Console.WriteLine($"[DB INFO] Server: {onTrackDBContext.Database.GetDbConnection().DataSource}");
         var conn = onTrackDBContext.Database.GetDbConnection();
         Console.WriteLine($"[DB DEBUG] Provider={onTrackDBContext.Database.ProviderName ?? "(none)"}");
@@ -539,12 +538,19 @@ public class Mutation {
 
             var latestInvoice = subscription.LatestInvoice as Invoice;
             var paymentIntent = latestInvoice?.PaymentIntent;
-
             var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY")?.Trim();
+
+            if (string.IsNullOrWhiteSpace(user.StripeCustomerId))
+            {
+                user.StripeCustomerId = customer.Id;
+                user.UserState = "subscribed";
+                onTrackDBContext.SaveChanges();
+            }
 
             if (paymentIntent == null || string.IsNullOrWhiteSpace(paymentIntent.ClientSecret))
             {
-                logger.LogError("Subscription {SubscriptionId} created without payment intent.", subscription.Id);
+                logger.LogDebug("Subscription {SubscriptionId} created without payment intent.", subscription.Id);
+                
                 return new CreateSubscriptionResponse
                 {
                     Success = true,
@@ -553,13 +559,6 @@ public class Mutation {
                     PublishableKey = publishableKey,
                     PlanKey = planDetails.PlanKey,
                 };
-            }
-
-            if (string.IsNullOrWhiteSpace(user.StripeCustomerId))
-            {
-                user.StripeCustomerId = customer.Id;
-                user.UserState = "subscribed";
-                onTrackDBContext.SaveChanges();
             }
 
             return new CreateSubscriptionResponse
@@ -677,7 +676,6 @@ public class Mutation {
 
 public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password)
     {
-        // Debugger.Break();
         // find a user by email
         var possibleUser = onTrackDBContext.Users
                 .Where(u => u.Email == email)
@@ -897,7 +895,6 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
 
 	public static LoginUserResponse verifyUserEmail(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken) {
 		// assert that the resetToken is not invalid
-        Debugger.Break();
         if (resetToken.Length < 8)
 			return new LoginUserResponse { Error="Invalid or missing user." };
 		
@@ -925,7 +922,6 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
     public static LoginUserResponse verifyUserToken(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken)
     {
         // assert that the resetToken is not invalid
-        Debugger.Break();
         if (resetToken.Length < 8)
             return new LoginUserResponse { Error = "Invalid or missing user." };
 

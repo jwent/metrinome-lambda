@@ -1,6 +1,7 @@
 ﻿using GraphQL;
 using Microsoft.EntityFrameworkCore;
 using Stripe;
+using System.Diagnostics;
 using System.Security.Claims;
 
 public class Query
