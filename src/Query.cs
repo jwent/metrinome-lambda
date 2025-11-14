@@ -511,6 +511,17 @@ public class Query
 			if (string.IsNullOrEmpty(userEmail))
                 return new CurrentSubscriptionResponse { Status = "no email" };
 
+            // If no customer exists yet, user cannot have any subscriptions
+            if (string.IsNullOrWhiteSpace(user.StripeCustomerId))
+            {
+                return new CurrentSubscriptionResponse
+                {
+                    Success = true,
+                    PlanKey = null,
+                    Status = "none"
+                };
+            }
+
             // 🔹 Retrieve active subscription
             var subs = await subscriptionService.ListAsync(new SubscriptionListOptions
             {
