@@ -3,6 +3,7 @@ using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
 using GraphQL;
 using GraphQL.Authorization;
+using Google.Apis.Auth;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Stripe;
@@ -59,10 +60,10 @@ public class Mutation {
     }
 
     public static LoginUserResponse loginUser([FromServices] OnTrackDBContext onTrackDBContext, string email, string password) {
-		// find a user by email and password
-		var user = onTrackDBContext.Users
-				.Where(u => u.Email == email)
-				.FirstOrDefault();
+                // find a user by email and password
+                var user = onTrackDBContext.Users
+                                .Where(u => u.Email == email)
+                                .FirstOrDefault();
 		// verify that we found a user
 		if (user == null)
 			return new LoginUserResponse { Error="Invalid email or password." };
@@ -79,9 +80,129 @@ public class Mutation {
             return new LoginUserResponse { Error = "Account disabled." };
         }
 
-		// return token
-		return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
-	}
+                // return token
+                return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
+        }
+
+    public static async Task<LoginUserResponse> loginUserWithGoogle([FromServices] OnTrackDBContext onTrackDBContext, string googleIdToken)
+    {
+        var googleClientId = Environment.GetEnvironmentVariable("ONTRACK_GOOGLE_CLIENT_ID");
+        if (string.IsNullOrWhiteSpace(googleClientId))
+        {
+            return new LoginUserResponse { Error = "Google login is not configured." };
+        }
+
+        GoogleJsonWebSignature.Payload payload;
+
+        try
+        {
+            payload = await GoogleJsonWebSignature.ValidateAsync(
+                googleIdToken,
+                new GoogleJsonWebSignature.ValidationSettings
+                {
+                    Audience = new[] { googleClientId }
+                });
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"[!] Google token validation failed: {e.Message}");
+            return new LoginUserResponse { Error = "Invalid Google token." };
+        }
+
+        if (!(payload.EmailVerified ?? false))
+        {
+            return new LoginUserResponse { Error = "Google account email is not verified." };
+        }
+
+        var email = payload.Email?.ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new LoginUserResponse { Error = "Google account is missing an email address." };
+        }
+
+        var user = await onTrackDBContext.Users
+            .Include(u => u.Organization)
+            .FirstOrDefaultAsync(u => u.Email == email);
+
+        if (user == null)
+        {
+            var newUser = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = email,
+                Password = string.Empty,
+                CreatedAt = DateTime.Now,
+                ResetPasswordToken = string.Empty,
+                UserState = "Active",
+            };
+
+            var newOrganization = new UserOrganization
+            {
+                Id = Guid.NewGuid(),
+                CreatorId = newUser.Id,
+                CreatedAt = DateTime.Now,
+                SubscriptionPlan = null,
+            };
+
+            newUser.Organization = newOrganization;
+
+            var newRole = new UserOrganizationalRoleAssociation
+            {
+                Id = Guid.NewGuid(),
+                OrganizationUser = newUser,
+                Organization = newOrganization,
+                RoleName = "Owner",
+            };
+
+            try
+            {
+                onTrackDBContext.Users.Add(newUser);
+                onTrackDBContext.UserOrganizations.Add(newOrganization);
+                onTrackDBContext.UserOrganizationalRoleAssociations.Add(newRole);
+                onTrackDBContext.SaveChanges();
+            }
+            catch (DbUpdateException e)
+            {
+                Console.WriteLine($"[!] Failed to create Google user: {e.Message}");
+                onTrackDBContext.Users.Remove(newUser);
+                onTrackDBContext.UserOrganizations.Remove(newOrganization);
+                onTrackDBContext.UserOrganizationalRoleAssociations.Remove(newRole);
+                return new LoginUserResponse { Error = "Invalid or duplicate email." };
+            }
+
+            var tracker = new UserTracker { Id = Guid.NewGuid(), Organization = newOrganization, CreatedAt = DateTime.Now };
+            onTrackDBContext.UserTrackers.Add(tracker);
+
+            if (!string.IsNullOrWhiteSpace(payload.Name))
+            {
+                onTrackDBContext.UserExtraProperties.Add(new UserExtraProperty
+                {
+                    Id = Guid.NewGuid(),
+                    Parent = newUser,
+                    PropertyKey = "FullName",
+                    PropertyValue = payload.Name,
+                });
+            }
+
+            onTrackDBContext.SaveChanges();
+            user = newUser;
+        }
+
+        if (user.UserState == "Invited")
+        {
+            user.UserState = "Active";
+            user.ResetPasswordToken = string.Empty;
+            onTrackDBContext.SaveChanges();
+        }
+
+        if (!user.UserState.Equals("Active", StringComparison.OrdinalIgnoreCase) &&
+            !user.UserState.Equals("subscribed", StringComparison.OrdinalIgnoreCase))
+        {
+            return new LoginUserResponse { Error = "Account disabled." };
+        }
+
+        return new LoginUserResponse { BearerToken = Util.SignAuthToken(user) };
+    }
 
     public static async Task<SuccessResponse> forgotPassword(
         [FromServices] OnTrackDBContext onTrackDBContext,
