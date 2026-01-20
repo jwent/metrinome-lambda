@@ -109,7 +109,7 @@ public class Mutation {
             return new LoginUserResponse { Error = "Invalid Google token." };
         }
 
-        if (!(payload.EmailVerified ?? false))
+        if (payload.EmailVerified != true)
         {
             return new LoginUserResponse { Error = "Google account email is not verified." };
         }
