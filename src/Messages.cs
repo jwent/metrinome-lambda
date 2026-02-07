@@ -2,6 +2,8 @@ public class UserData {
 	public string? Email { get; set; }
 	public DateTime? CreatedAt { get; set; }
 	public string? UserState { get; set; }
+	public bool? Admin { get; set; }
+	public string? MagicLink { get; set; }
 	
 	public string? FullName { get; set; }
 	public List<string>? UserRoles { get; set; }
