@@ -64,6 +64,8 @@ public class Query
 			CreatedAt=user.CreatedAt,
 			FullName=user.ExtraProperties.FirstOrDefault(prop => prop.PropertyKey == "FullName")?.PropertyValue,
 			UserRoles=user.UserRoles.Select(r => r.RoleName).ToList(),
+			Admin=user.UserRoles.Any(r => r.RoleName == "Owner" || r.RoleName == "Admin"),
+			MagicLink=user.ResetPasswordToken,
 		};
 	}
 
