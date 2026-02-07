@@ -51,6 +51,7 @@ public class Query
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static UserData getUserData(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
+		Debugger.Break();
 		var userId = UserController.GetCurrentUserId(context);
 		var user = onTrackDBContext.Users
 			.Where(u => u.Id == userId)

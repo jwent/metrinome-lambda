@@ -80,9 +80,9 @@ public class Mutation {
             return new LoginUserResponse { Error = "Account disabled." };
         }
 
-                // return token
-                return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
-        }
+            // return token
+            return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
+    }
 
     public static async Task<LoginUserResponse> loginUserWithGoogle([FromServices] OnTrackDBContext onTrackDBContext, string googleIdToken)
     {
@@ -244,7 +244,7 @@ public class Mutation {
         // --- EMAIL SETUP ---
         var resetUrl = $"https://app.metrinome.io/actualresetpassword?token={randomResetToken}";
         var sender = "noreply@metrinome.io"; // must be verified in SES
-        var subject = "Reset your OnTrack Analytics password";
+        var subject = "Reset your Metrinome Analytics password";
         var bodyHtml = $@"
             <html>
                 <body style='font-family: Arial, sans-serif;'>
@@ -883,7 +883,7 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
         onTrackDBContext.SaveChanges();
 
         // email the user to get started
-        await EmailController.SendEmail(email, "Please verify your OnTrack Analytics account",
+        await EmailController.SendEmail(email, "Please verify your Metrinome Analytics account",
                 $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}VerifyMainUserEmail?resetkey={randomResetToken}'>this link</a> to verify your account and use the platform.");
 
         // return is pointless
