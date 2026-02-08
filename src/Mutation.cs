@@ -1,9 +1,11 @@
 ﻿using Amazon.Runtime.Internal.Util;
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
+using Google.Apis.Auth;
+using Google.Apis.Auth.OAuth2;
 using GraphQL;
 using GraphQL.Authorization;
-using Google.Apis.Auth;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Stripe;
@@ -15,7 +17,6 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using Microsoft.AspNetCore.WebUtilities;
 using StripeCustomerService = Stripe.CustomerService;
 
 public class Mutation {
@@ -87,7 +88,7 @@ public class Mutation {
             return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
     }
 
-    public static async Task<CheckMagicLinkResult> CheckMagicLink(
+    public static async Task<CheckMagicLinkResult> checkMagicLink(
         IResolveFieldContext context,
         [FromServices] OnTrackDBContext db,
         string email,
@@ -99,7 +100,8 @@ public class Mutation {
             {
                 HasValidMagicLink = false,
                 IsExpired = true,
-                Error = "Email and magic link are required"
+                Error = "Email and magic link are required",
+                BearerToken = null
             };
         }
 
@@ -113,7 +115,8 @@ public class Mutation {
             {
                 HasValidMagicLink = false,
                 IsExpired = true,
-                Error = "User not found"
+                Error = "User not found",
+                BearerToken = null
             };
         }
 
@@ -123,7 +126,8 @@ public class Mutation {
             {
                 HasValidMagicLink = false,
                 IsExpired = true,
-                Error = "User does not have a magic link"
+                Error = "User does not have a magic link",
+                BearerToken = null
             };
         }
 
@@ -134,7 +138,8 @@ public class Mutation {
             {
                 HasValidMagicLink = false,
                 IsExpired = true,
-                Error = "Magic link token is missing"
+                Error = "Magic link token is missing",
+                BearerToken = null
             };
         }
 
@@ -150,17 +155,19 @@ public class Mutation {
             {
                 HasValidMagicLink = false,
                 IsExpired = true,
-                Error = "Magic link is invalid"
+                Error = "Magic link is invalid",
+                BearerToken = null
             };
         }
 
-        if (user.UserState == "MagicLinkUser" && user.CreatedAt < DateTime.UtcNow.AddDays(-60)
+        if (user.UserState == "MagicLinkUser" && user.CreatedAt >= DateTime.UtcNow.AddDays(-60)
 )       {
             return new CheckMagicLinkResult
             {
                 HasValidMagicLink = true,
                 IsExpired = false,
-                Error = null
+                Error = null,
+                BearerToken = Util.SignAuthToken(user)
             };
         }
         else
@@ -169,7 +176,8 @@ public class Mutation {
             {
                 HasValidMagicLink = false,
                 IsExpired = true,
-                Error = "User does not have magic link access"
+                Error = "User does not have magic link access",
+                BearerToken = null
             };
         }
     }
@@ -178,28 +186,72 @@ public class Mutation {
     {
         var trimmed = magicLink?.Trim();
         if (string.IsNullOrWhiteSpace(trimmed))
-        {
             return string.Empty;
-        }
 
+        // Try full URL parsing first
         if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
         {
-            if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("token", out var token))
+            // 1) Query string (?token=abc)
+            var query = QueryHelpers.ParseQuery(uri.Query);
+            if (query.TryGetValue("token", out var queryToken) &&
+                !string.IsNullOrWhiteSpace(queryToken))
             {
-                return token.ToString();
+                return queryToken.ToString();
+            }
+
+            // 2) Fragment (#abc OR #token=abc OR #uuid=abc)
+            var fragment = uri.Fragment; // includes leading #
+            if (!string.IsNullOrWhiteSpace(fragment))
+            {
+                var frag = fragment.StartsWith("#", StringComparison.Ordinal)
+                    ? fragment.Substring(1)
+                    : fragment;
+
+                // If fragment contains key/value pairs, parse them
+                if (frag.Contains("=", StringComparison.Ordinal))
+                {
+                    var fragParams = QueryHelpers.ParseQuery("?" + frag);
+
+                    if (fragParams.TryGetValue("token", out var fragToken) &&
+                        !string.IsNullOrWhiteSpace(fragToken))
+                    {
+                        return fragToken.ToString();
+                    }
+
+                    if (fragParams.TryGetValue("uuid", out var fragUuid) &&
+                        !string.IsNullOrWhiteSpace(fragUuid))
+                    {
+                        return fragUuid.ToString();
+                    }
+                }
+
+                // Otherwise fragment *is* the token
+                return frag;
             }
         }
 
+        // 3) Fallback: string-based parsing
         var tokenIndex = trimmed.IndexOf("token=", StringComparison.OrdinalIgnoreCase);
         if (tokenIndex >= 0)
         {
-            var tokenStart = tokenIndex + "token=".Length;
-            var tokenEnd = trimmed.IndexOf('&', tokenStart);
-            return tokenEnd >= 0 ? trimmed.Substring(tokenStart, tokenEnd - tokenStart) : trimmed.Substring(tokenStart);
+            var start = tokenIndex + "token=".Length;
+
+            // Handle token=#abc
+            if (start < trimmed.Length && trimmed[start] == '#')
+                start++;
+
+            var end = trimmed.IndexOf('&', start);
+            return end >= 0
+                ? trimmed.Substring(start, end - start)
+                : trimmed.Substring(start);
         }
 
-        return trimmed;
+        // 4) Last resort: raw token or "#token"
+        return trimmed.StartsWith("#", StringComparison.Ordinal)
+            ? trimmed.Substring(1)
+            : trimmed;
     }
+
 
     public static async Task<LoginUserResponse> loginUserWithGoogle([FromServices] OnTrackDBContext onTrackDBContext, string googleIdToken)
     {

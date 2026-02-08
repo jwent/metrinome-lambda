@@ -226,6 +226,7 @@ public class CheckMagicLinkResult
     public bool HasValidMagicLink { get; set; }
     public bool IsExpired { get; set; }
     public string? Error { get; set; }
+	public string? BearerToken { get; set; }
 }
 
 public class TrackerInsightsResponse {
