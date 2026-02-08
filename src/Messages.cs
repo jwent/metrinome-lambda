@@ -184,7 +184,7 @@ public class CampaignConversionStatPoint
 }
 public class AddUserResponse {
 	public Guid? Id { get; set; }
-    public string? MagicLink { get; set; }
+    public string? MagicLinkUrl { get; set; }
     public string? Error { get; set; }
 }
 public class SuccessResponse {

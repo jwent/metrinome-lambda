@@ -75,7 +75,8 @@ public class Mutation {
 			return new LoginUserResponse { Error="Invalid email or password." };
         // if they don't have an active account, no entry
         if (!user.UserState.Equals("Active", StringComparison.OrdinalIgnoreCase) &&
-            !user.UserState.Equals("subscribed", StringComparison.OrdinalIgnoreCase))
+            !user.UserState.Equals("subscribed", StringComparison.OrdinalIgnoreCase) && 
+            !user.UserState.Equals("Admin", StringComparison.OrdinalIgnoreCase))
         {
             return new LoginUserResponse { Error = "Account disabled." };
         }
@@ -245,7 +246,8 @@ public class Mutation {
         }
 
         if (!user.UserState.Equals("Active", StringComparison.OrdinalIgnoreCase) &&
-            !user.UserState.Equals("subscribed", StringComparison.OrdinalIgnoreCase))
+            !user.UserState.Equals("subscribed", StringComparison.OrdinalIgnoreCase) &&
+            !user.UserState.Equals("Admin", StringComparison.OrdinalIgnoreCase))
         {
             return new LoginUserResponse { Error = "Account disabled." };
         }
@@ -843,8 +845,7 @@ public class Mutation {
         }
     }
 
-
-public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password, Boolean canUseMagicLink)
+    public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password, Boolean canUseMagicLink)
     {
         // find a user by email
         var possibleUser = onTrackDBContext.Users
@@ -878,7 +879,8 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
             Password = passwordHash,
             CreatedAt = DateTime.UtcNow,
             ResetPasswordToken = randomResetToken,
-            UserState = "Invited"
+            UserState = "Invited",
+            MagicLink = null
         };
 
         if (canUseMagicLink)
@@ -886,6 +888,11 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
             newUser.MagicLink = Guid.NewGuid().ToString();
             newUser.UserState = "MagicLinkUser";
         }
+
+        var baseUrl = Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")
+            ?? throw new InvalidOperationException("ONTRACK_SITE_URL is not configured");
+
+        var magicLinkUrl = Util.CreateMagicLinkUrl(email, newUser.MagicLink, baseUrl);
 
         var newOrganization = new UserOrganization
         {
@@ -946,11 +953,11 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
         }
         else {
             await EmailController.SendEmail(email, "Your Metrinome Analytics magic link",
-                $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}magiclogin?token={newUser.MagicLink}'>this link</a> to log in to your account and use the platform.");
+                $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}magiclogin?token={magicLinkUrl}'>this link</a> to log in to your account and use the platform.");
         }
 
         // return is pointless
-        return new AddUserResponse { Id = newUser.Id, MagicLink = newUser.MagicLink };
+        return new AddUserResponse { Id = newUser.Id, MagicLinkUrl = magicLinkUrl };
     }
 
 

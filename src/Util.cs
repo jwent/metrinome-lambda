@@ -115,4 +115,26 @@ public class Util {
 	public static bool IsEnvironmentStage(string stage) {
 		return (Environment.GetEnvironmentVariable("ONTRACK_STAGE") ?? "LOCALTEST") == stage;
 	}
+
+    public static string CreateMagicLinkUrl(
+    string email,
+    string magicLinkId,
+    string baseUrl // e.g. https://app.ontrackanalytics.com
+)
+    {
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(magicLinkId))
+            throw new ArgumentException("Email and magic link ID are required.");
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var payload = $"{normalizedEmail}:{magicLinkId}";
+
+        var hash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(payload))
+        );
+
+        // URL-encode email for safety
+        var encodedEmail = Uri.EscapeDataString(normalizedEmail);
+
+        return $"{baseUrl}/Invite?email={encodedEmail}&token={hash}";
+    }
 }
