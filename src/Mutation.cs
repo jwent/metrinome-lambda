@@ -84,6 +84,55 @@ public class Mutation {
             return new LoginUserResponse { BearerToken=Util.SignAuthToken(user) };
     }
 
+    public static async Task<CheckMagicLinkResult> CheckMagicLink(
+        IResolveFieldContext context,
+        [FromServices] OnTrackDBContext db,
+        string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new CheckMagicLinkResult
+            {
+                HasValidMagicLink = false,
+                IsExpired = true,
+                Error = "Email is required"
+            };
+        }
+
+        var user = await db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+
+        if (user == null)
+        {
+            return new CheckMagicLinkResult
+            {
+                HasValidMagicLink = false,
+                IsExpired = true,
+                Error = "User not found"
+            };
+        }
+
+        if (user.UserState == "MagicLinkUser" && user.CreatedAt < DateTime.UtcNow.AddDays(-60)
+)       {
+            return new CheckMagicLinkResult
+            {
+                HasValidMagicLink = true,
+                IsExpired = false,
+                Error = null
+            };
+        }
+        else
+        {
+            return new CheckMagicLinkResult
+            {
+                HasValidMagicLink = false,
+                IsExpired = true,
+                Error = "User does not have magic link access"
+            };
+        }
+    }
+
     public static async Task<LoginUserResponse> loginUserWithGoogle([FromServices] OnTrackDBContext onTrackDBContext, string googleIdToken)
     {
         var googleClientId = Environment.GetEnvironmentVariable("ONTRACK_GOOGLE_CLIENT_ID");
@@ -795,7 +844,7 @@ public class Mutation {
     }
 
 
-public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password)
+public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password, Boolean canUseMagicLink)
     {
         // find a user by email
         var possibleUser = onTrackDBContext.Users
@@ -827,10 +876,17 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
             Id = Guid.NewGuid(),
             Email = email,
             Password = passwordHash,
-            CreatedAt = DateTime.Now,
+            CreatedAt = DateTime.UtcNow,
             ResetPasswordToken = randomResetToken,
-            UserState = "Invited",
+            UserState = "Invited"
         };
+
+        if (canUseMagicLink)
+        {
+            newUser.MagicLink = Guid.NewGuid().ToString();
+            newUser.UserState = "MagicLinkUser";
+        }
+
         var newOrganization = new UserOrganization
         {
             Id = Guid.NewGuid(),
@@ -883,11 +939,18 @@ public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContex
         onTrackDBContext.SaveChanges();
 
         // email the user to get started
-        await EmailController.SendEmail(email, "Please verify your Metrinome Analytics account",
+        if (!canUseMagicLink)
+        {
+            await EmailController.SendEmail(email, "Please verify your Metrinome Analytics account",
                 $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}VerifyMainUserEmail?resetkey={randomResetToken}'>this link</a> to verify your account and use the platform.");
+        }
+        else {
+            await EmailController.SendEmail(email, "Your Metrinome Analytics magic link",
+                $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}magiclogin?token={newUser.MagicLink}'>this link</a> to log in to your account and use the platform.");
+        }
 
         // return is pointless
-        return new AddUserResponse { Id = newUser.Id };
+        return new AddUserResponse { Id = newUser.Id, MagicLink = newUser.MagicLink };
     }
 
 

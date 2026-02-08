@@ -17,7 +17,7 @@ public class User {
 	public string ResetPasswordToken { get; set; }
 	public string UserState { get; set; }
     public string? StripeCustomerId { get; set; }
-    public Guid? MagicLink { get; set; }
+    public string? MagicLink { get; set; }
 
     [InverseProperty("Parent")]
 	public List<UserExtraProperty> ExtraProperties { get; set; }

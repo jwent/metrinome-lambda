@@ -65,7 +65,7 @@ public class Query
 			FullName=user.ExtraProperties.FirstOrDefault(prop => prop.PropertyKey == "FullName")?.PropertyValue,
 			UserRoles=user.UserRoles.Select(r => r.RoleName).ToList(),
 			Admin = string.Equals(user.UserState, "Admin", StringComparison.OrdinalIgnoreCase),
-            MagicLink = user.MagicLink.ToString(),
+            MagicLink = user.MagicLink
 		};
 	}
 

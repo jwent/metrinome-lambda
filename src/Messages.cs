@@ -184,7 +184,8 @@ public class CampaignConversionStatPoint
 }
 public class AddUserResponse {
 	public Guid? Id { get; set; }
-	public string? Error { get; set; }
+    public string? MagicLink { get; set; }
+    public string? Error { get; set; }
 }
 public class SuccessResponse {
 	public bool? Success { get; set; }
@@ -218,6 +219,13 @@ public class CreatePaymentIntentResponse
 public class LoginUserResponse {
 	public string? BearerToken { get; set; }
 	public string? Error { get; set; }
+}
+
+public class CheckMagicLinkResult
+{
+    public bool HasValidMagicLink { get; set; }
+    public bool IsExpired { get; set; }
+    public string? Error { get; set; }
 }
 
 public class TrackerInsightsResponse {
