@@ -999,7 +999,7 @@ public class Mutation {
             CreatedAt = DateTime.UtcNow,
             ResetPasswordToken = randomResetToken,
             UserState = "Invited",
-            MagicLink = null
+            MagicLink = ""
         };
 
         if (canUseMagicLink)
@@ -1071,8 +1071,18 @@ public class Mutation {
                 $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}VerifyMainUserEmail?resetkey={randomResetToken}'>this link</a> to verify your account and use the platform.");
         }
         else {
+            var normalizedEmail = email.Trim().ToLowerInvariant();
+            var payload = $"{normalizedEmail}:{newUser.MagicLink}";
+
+            var hash = Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(payload))
+            );
+
+            // URL-encode email for safety
+            var encodedEmail = Uri.EscapeDataString(normalizedEmail);
+
             await EmailController.SendEmail(email, "Your Metrinome Analytics magic link",
-                $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}magiclogin?token={magicLinkUrl}'>this link</a> to log in to your account and use the platform.");
+                $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}invite?email={encodedEmail}&token=#{hash}'>this link</a> to log in to your account and use the platform.");
         }
 
         // return is pointless
