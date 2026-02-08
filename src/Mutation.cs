@@ -12,8 +12,10 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using Microsoft.AspNetCore.WebUtilities;
 using StripeCustomerService = Stripe.CustomerService;
 
 public class Mutation {
@@ -88,15 +90,16 @@ public class Mutation {
     public static async Task<CheckMagicLinkResult> CheckMagicLink(
         IResolveFieldContext context,
         [FromServices] OnTrackDBContext db,
-        string email)
+        string email,
+        string magicLink)
     {
-        if (string.IsNullOrWhiteSpace(email))
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(magicLink))
         {
             return new CheckMagicLinkResult
             {
                 HasValidMagicLink = false,
                 IsExpired = true,
-                Error = "Email is required"
+                Error = "Email and magic link are required"
             };
         }
 
@@ -111,6 +114,43 @@ public class Mutation {
                 HasValidMagicLink = false,
                 IsExpired = true,
                 Error = "User not found"
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(user.MagicLink))
+        {
+            return new CheckMagicLinkResult
+            {
+                HasValidMagicLink = false,
+                IsExpired = true,
+                Error = "User does not have a magic link"
+            };
+        }
+
+        var providedToken = ExtractMagicLinkToken(magicLink);
+        if (string.IsNullOrWhiteSpace(providedToken))
+        {
+            return new CheckMagicLinkResult
+            {
+                HasValidMagicLink = false,
+                IsExpired = true,
+                Error = "Magic link token is missing"
+            };
+        }
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var payload = $"{normalizedEmail}:{user.MagicLink}";
+        var expectedToken = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(payload))
+        );
+
+        if (!string.Equals(providedToken, expectedToken, StringComparison.OrdinalIgnoreCase))
+        {
+            return new CheckMagicLinkResult
+            {
+                HasValidMagicLink = false,
+                IsExpired = true,
+                Error = "Magic link is invalid"
             };
         }
 
@@ -132,6 +172,33 @@ public class Mutation {
                 Error = "User does not have magic link access"
             };
         }
+    }
+
+    private static string ExtractMagicLinkToken(string magicLink)
+    {
+        var trimmed = magicLink?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return string.Empty;
+        }
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("token", out var token))
+            {
+                return token.ToString();
+            }
+        }
+
+        var tokenIndex = trimmed.IndexOf("token=", StringComparison.OrdinalIgnoreCase);
+        if (tokenIndex >= 0)
+        {
+            var tokenStart = tokenIndex + "token=".Length;
+            var tokenEnd = trimmed.IndexOf('&', tokenStart);
+            return tokenEnd >= 0 ? trimmed.Substring(tokenStart, tokenEnd - tokenStart) : trimmed.Substring(tokenStart);
+        }
+
+        return trimmed;
     }
 
     public static async Task<LoginUserResponse> loginUserWithGoogle([FromServices] OnTrackDBContext onTrackDBContext, string googleIdToken)
@@ -1325,4 +1392,3 @@ public class Mutation {
     }
 
 }
-
