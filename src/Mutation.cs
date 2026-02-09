@@ -1023,10 +1023,8 @@ public class Mutation {
 
         if (canUseMagicLink)
         {
-            newOrganization.SubscriptionPlan = UserController.GetSubscriptionPlanByKey(
-                onTrackDBContext,
-                StarterMonthlyPlanKey
-            );
+            newOrganization.SubscriptionPlan = onTrackDBContext.OrganizationalSubscriptionPlans
+                .First(plan => plan.PlanKey == StarterMonthlyPlanKey);
         }
         newUser.Organization = newOrganization;
         var newRole = new UserOrganizationalRoleAssociation
