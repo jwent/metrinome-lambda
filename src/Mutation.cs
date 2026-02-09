@@ -1020,6 +1020,14 @@ public class Mutation {
             CreatedAt = DateTime.Now,
             SubscriptionPlan = null,
         };
+
+        if (canUseMagicLink)
+        {
+            newOrganization.SubscriptionPlan = UserController.GetSubscriptionPlanByKey(
+                onTrackDBContext,
+                StarterMonthlyPlanKey
+            );
+        }
         newUser.Organization = newOrganization;
         var newRole = new UserOrganizationalRoleAssociation
         {
