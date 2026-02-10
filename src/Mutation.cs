@@ -160,7 +160,7 @@ public class Mutation {
             };
         }
 
-        if (user.UserState == "MagicLinkUser" && user.CreatedAt >= DateTime.UtcNow.AddDays(-60)
+        if (user.UserState == "MagicLinkUser" && user.CreatedAt >= DateTime.UtcNow.AddDays(-1)
 )       {
             return new CheckMagicLinkResult
             {
