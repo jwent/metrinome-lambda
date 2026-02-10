@@ -78,7 +78,8 @@ public class Mutation {
 			return new LoginUserResponse { Error="Invalid email or password." };
         // if they don't have an active account, no entry
         if (!user.UserState.Equals("Active", StringComparison.OrdinalIgnoreCase) &&
-            !user.UserState.Equals("subscribed", StringComparison.OrdinalIgnoreCase) && 
+            !user.UserState.Equals("subscribed", StringComparison.OrdinalIgnoreCase) &&
+            !user.UserState.Equals("MagicLinkUser", StringComparison.OrdinalIgnoreCase) &&
             !user.UserState.Equals("Admin", StringComparison.OrdinalIgnoreCase))
         {
             return new LoginUserResponse { Error = "Account disabled." };
