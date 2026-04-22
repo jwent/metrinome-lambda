@@ -10,3 +10,5 @@ obj/
 Properties/
 on-track-backend.sln
 .vscode/
+publish-lambda
+*.zip
