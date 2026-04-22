@@ -1,5 +1,6 @@
 ﻿using GraphQL;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Stripe;
 using System.Diagnostics;
 using System.Security.Claims;
@@ -66,6 +67,66 @@ public class Query
 			Admin = string.Equals(user.UserState, "Admin", StringComparison.OrdinalIgnoreCase),
             MagicLink = user.MagicLink
 		};
+	}
+
+	[Authorize(Policy = "CustomerPolicy")]
+	public static List<AdminCveData> adminCves(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
+		var userId = UserController.GetCurrentUserId(context);
+		var currentUser = onTrackDBContext.Users
+			.AsNoTracking()
+			.Where(u => u.Id == userId)
+			.Select(u => new { u.OrganizationId, u.UserState })
+			.First();
+
+		if (!string.Equals(currentUser.UserState, "Admin", StringComparison.OrdinalIgnoreCase)) {
+			throw new ExecutionError("Admin access required.");
+		}
+
+		List<AdminCveData> cves;
+		try {
+			cves = (
+				from cve in onTrackDBContext.ConversionVerificationEvents.AsNoTracking()
+				where cve.OrganizationId == currentUser.OrganizationId
+				join site in onTrackDBContext.OrganizationSites.AsNoTracking()
+					on cve.SiteId equals site.Id into siteGroup
+				from site in siteGroup.DefaultIfEmpty()
+				join contract in onTrackDBContext.OrganizationCveContracts.AsNoTracking()
+					on cve.ContractId equals contract.Id into contractGroup
+				from contract in contractGroup.DefaultIfEmpty()
+				join campaign in onTrackDBContext.TrackingCampaigns.AsNoTracking()
+					on cve.TrackingCampaignId equals campaign.Id into campaignGroup
+				from campaign in campaignGroup.DefaultIfEmpty()
+				orderby cve.SubmittedAtUtc descending
+				select new AdminCveData {
+					Id = cve.Id,
+					SubmittedAtUtc = cve.SubmittedAtUtc,
+					OriginalEventTimestampUtc = cve.OriginalEventTimestampUtc,
+					Status = cve.Status,
+					CountsTowardCve = cve.CountsTowardCve,
+					CountedAtUtc = cve.CountedAtUtc,
+					RejectionReason = cve.RejectionReason,
+					Source = cve.Source,
+					ExternalSubmissionId = cve.ExternalSubmissionId,
+					ExternalConversionId = cve.ExternalConversionId,
+					SiteName = site != null ? site.SiteName : null,
+					Domain = site != null ? site.Domain : null,
+					TrackingId = site != null ? site.TrackingId : null,
+					ContractTierName = contract != null ? contract.TierName : null,
+					CampaignName = campaign != null ? campaign.CampaignName : null,
+					TrackingCampaignId = cve.TrackingCampaignId,
+					TrackerId = cve.TrackerId,
+					TrackerClickId = cve.TrackerClickId,
+					DuplicateOfEventId = cve.DuplicateOfEventId,
+				}
+			).ToList();
+		}
+		catch (PostgresException ex) when (ex.SqlState == "42P01") {
+			throw new ExecutionError(
+				"CVE schema is missing in the active database. Run scripts/cve-schema-migration.sql against the database configured by ONTRACK_DATABASE_CONNECT_STRING."
+			);
+		}
+
+		return cves;
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]

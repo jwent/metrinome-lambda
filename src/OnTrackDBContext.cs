@@ -17,6 +17,9 @@ public class OnTrackDBContext : DbContext
     public DbSet<TrackerClick> TrackerClicks { get; set; } = null!;
     public DbSet<TrackerClickExtraProperty> TrackerClickExtraProperties { get; set; } = null!;
     public DbSet<OrganizationalSubscriptionPlan> OrganizationalSubscriptionPlans { get; set; } = null!;
+    public DbSet<OrganizationCveContract> OrganizationCveContracts { get; set; } = null!;
+    public DbSet<OrganizationSite> OrganizationSites { get; set; } = null!;
+    public DbSet<ConversionVerificationEvent> ConversionVerificationEvents { get; set; } = null!;
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

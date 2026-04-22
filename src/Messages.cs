@@ -247,3 +247,26 @@ public class CurrentSubscriptionResponse
     public string? Error { get; set; }
 	public string? CustomerName { get; set; }
 }
+
+public class AdminCveData
+{
+	public Guid Id { get; set; }
+	public DateTime SubmittedAtUtc { get; set; }
+	public DateTime? OriginalEventTimestampUtc { get; set; }
+	public string? Status { get; set; }
+	public bool CountsTowardCve { get; set; }
+	public DateTime? CountedAtUtc { get; set; }
+	public string? RejectionReason { get; set; }
+	public string? Source { get; set; }
+	public string? ExternalSubmissionId { get; set; }
+	public string? ExternalConversionId { get; set; }
+	public string? SiteName { get; set; }
+	public string? Domain { get; set; }
+	public string? TrackingId { get; set; }
+	public string? ContractTierName { get; set; }
+	public string? CampaignName { get; set; }
+	public Guid? TrackingCampaignId { get; set; }
+	public Guid? TrackerId { get; set; }
+	public Guid? TrackerClickId { get; set; }
+	public Guid? DuplicateOfEventId { get; set; }
+}

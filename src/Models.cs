@@ -63,6 +63,56 @@ public class OrganizationalSubscriptionPlan {
 	public bool IsFreePlan { get; set; }
 }
 
+public class OrganizationCveContract {
+	public Guid Id { get; set; }
+	public Guid OrganizationId { get; set; }
+	public string TierName { get; set; }
+	public int CommittedAnnualCVEs { get; set; }
+	public DateTime ContractStartDate { get; set; }
+	public DateTime ContractEndDate { get; set; }
+	public bool CVEHardLimitEnabled { get; set; }
+	public DateTime? CVEWarning75SentAt { get; set; }
+	public DateTime? CVEWarning90SentAt { get; set; }
+	public DateTime? UpgradeRequiredTriggeredAt { get; set; }
+	public DateTime CreatedAt { get; set; }
+	public DateTime UpdatedAt { get; set; }
+}
+
+public class OrganizationSite {
+	public Guid Id { get; set; }
+	public Guid OrganizationId { get; set; }
+	public string SiteName { get; set; }
+	public string Domain { get; set; }
+	public string TrackingId { get; set; }
+	public bool IsActive { get; set; }
+	public DateTime CreatedAt { get; set; }
+	public DateTime UpdatedAt { get; set; }
+}
+
+public class ConversionVerificationEvent {
+	public Guid Id { get; set; }
+	public Guid OrganizationId { get; set; }
+	public Guid SiteId { get; set; }
+	public Guid? ContractId { get; set; }
+	public Guid? TrackerId { get; set; }
+	public Guid? TrackingCampaignId { get; set; }
+	public Guid? TrackerClickId { get; set; }
+	public string? ExternalSubmissionId { get; set; }
+	public string? ExternalConversionId { get; set; }
+	public string? IdempotencyKey { get; set; }
+	public DateTime SubmittedAtUtc { get; set; }
+	public DateTime? OriginalEventTimestampUtc { get; set; }
+	public string Status { get; set; }
+	public bool CountsTowardCve { get; set; }
+	public DateTime? CountedAtUtc { get; set; }
+	public Guid? DuplicateOfEventId { get; set; }
+	public string? RejectionReason { get; set; }
+	public string? RequestHash { get; set; }
+	public string? Source { get; set; }
+	public DateTime CreatedAtUtc { get; set; }
+	public DateTime UpdatedAtUtc { get; set; }
+}
+
 public class UserTracker {
 	public Guid Id { get; set; }
 	public UserOrganization Organization { get; set; }
@@ -127,5 +177,4 @@ public class TrackerClickExtraProperty {
 	public string PropertyKey { get; set; }
 	public string PropertyValue { get; set; }
 }
-
 
