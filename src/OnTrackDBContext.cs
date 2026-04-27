@@ -23,6 +23,9 @@ public class OnTrackDBContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
+        if (optionsBuilder.IsConfigured)
+            return;
+
         var connectString = Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING");
 
         if (string.IsNullOrWhiteSpace(connectString))

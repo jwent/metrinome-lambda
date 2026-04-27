@@ -135,7 +135,8 @@ public class Query
 
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
-		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
+		var endpoint = (Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL") ?? string.Empty).TrimEnd('/');
+		var clickEndpoint = $"{endpoint}/click";
 		return 
 			Util.CompressJavascriptStub(@"<script src=""" + Environment.GetEnvironmentVariable("ONTRACK_SITE_URL") + @"cdn/psl.min.js""></script>") + "\n"
 			+ Util.CompressJavascriptStub(@"<script type=""text/javascript"">
@@ -146,7 +147,7 @@ public class Query
 			var rpu = window.btoa(window.location.href);
 			var rpr = window.btoa(document.referrer);
 			(function(){
-				fetch('" + endpoint + "?t=" + userTracker.Id.ToString() + @"&r='+rpr+'&u='+rpu)
+				fetch('" + clickEndpoint + "?t=" + userTracker.Id.ToString() + @"&r='+rpr+'&u='+rpu)
 				.then(function(r) { return r.json(); })
 				.then(function(d) { 
 					var cookieName = 'ontrack-clid';
@@ -164,7 +165,8 @@ public class Query
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static PostbackCodes postbackCode(IResolveFieldContext context) {
-		var endpoint = Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL");
+		var endpoint = (Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL") ?? string.Empty).TrimEnd('/');
+		var postbackEndpoint = $"{endpoint}/postback";
 		return new PostbackCodes
 		{
 			PagePostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
@@ -175,7 +177,7 @@ public class Query
 						console.warn('Metrinome postback: no valid clid found');
 						return;
 					}
-					fetch('https://ping.ontrackanalytics.com/postback?clid=' + encodeURIComponent(clid), { mode: 'no-cors' });
+					fetch('" + postbackEndpoint + @"?clid=' + encodeURIComponent(clid), { mode: 'no-cors' });
 					console.log('Metrinome postback fired:', clid);
 				}
 				)();
@@ -188,7 +190,7 @@ public class Query
 						var clid = cookies ? cookies.pop() : '';
 				
 						if(clid){
-							fetch('" + endpoint + @"postback?clid='+clid,{mode:'no-cors'})
+							fetch('" + postbackEndpoint + @"?clid='+clid,{mode:'no-cors'})
 						}
 					});
 				})()</script>"),

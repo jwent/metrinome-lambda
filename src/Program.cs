@@ -109,6 +109,32 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseCors("DefaultPolicy");
 
+app.MapGet("/click", async (HttpRequest request, OnTrackDBContext onTrackDBContext, string t, string? u, string? r) =>
+{
+	try
+	{
+		var clickId = await TrackerController.RegisterClickAsync(onTrackDBContext, request, t, u, r);
+		return Results.Json(new { clid = clickId });
+	}
+	catch (BadHttpRequestException ex)
+	{
+		return Results.BadRequest(new { error = ex.Message });
+	}
+});
+
+app.MapGet("/postback", async (HttpRequest request, OnTrackDBContext onTrackDBContext, string clid) =>
+{
+	try
+	{
+		var found = await TrackerController.RegisterPostbackAsync(onTrackDBContext, request, clid);
+		return found ? Results.Ok() : Results.NotFound();
+	}
+	catch (BadHttpRequestException ex)
+	{
+		return Results.BadRequest(new { error = ex.Message });
+	}
+});
+
 // app.UseGraphQL("/graphql", config => {
 //     // // require that the user be authenticated
 //     config.AuthorizationRequired = false;
@@ -117,4 +143,3 @@ app.UseEndpoints(endpoints =>
   endpoints.MapGraphQL());
 
 await app.RunAsync();
-
