@@ -3,7 +3,6 @@ using System.Security.Claims;
 using System.Text;
 using GraphQL;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -66,7 +65,7 @@ public class TrackingSnippetTests
 
         Assert.True(click.Conversion);
         Assert.NotNull(click.ConversionDate);
-        Assert.Equal("counted", cve.Status);
+        Assert.Equal("Verified", cve.Status);
         Assert.True(cve.CountsTowardCve);
         Assert.Equal(harness.Contract.Id, cve.ContractId);
         Assert.Equal(harness.Campaign.Id, cve.TrackingCampaignId);
@@ -97,7 +96,7 @@ public class TrackingSnippetTests
         var cve = await harness.Db.ConversionVerificationEvents.SingleAsync(e => e.TrackerClickId == clickId);
         var site = await harness.Db.OrganizationSites.SingleAsync(s => s.Id == cve.SiteId);
 
-        Assert.Equal("counted", cve.Status);
+        Assert.Equal("Verified", cve.Status);
         Assert.True(cve.CountsTowardCve);
         Assert.Equal(harness.Tracker.Id, cve.TrackerId);
         Assert.Equal("checkout.example.com", site.Domain);
@@ -145,8 +144,6 @@ public class TrackingSnippetTests
 
     private sealed class TrackingTestHarness : IDisposable
     {
-        private readonly SqliteConnection _connection;
-
         public OnTrackDBContext Db { get; }
         public User User { get; }
         public UserOrganization Organization { get; }
@@ -155,7 +152,6 @@ public class TrackingSnippetTests
         public OrganizationCveContract Contract { get; }
 
         private TrackingTestHarness(
-            SqliteConnection connection,
             OnTrackDBContext db,
             User user,
             UserOrganization organization,
@@ -163,7 +159,6 @@ public class TrackingSnippetTests
             TrackingCampaign campaign,
             OrganizationCveContract contract)
         {
-            _connection = connection;
             Db = db;
             User = user;
             Organization = organization;
@@ -177,24 +172,25 @@ public class TrackingSnippetTests
             Environment.SetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL", "https://tracking.test");
             Environment.SetEnvironmentVariable("ONTRACK_SITE_URL", "https://app.test/");
             Environment.SetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY", "test-signing-key-1234567890");
-            Environment.SetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING", "Host=unused;Database=unused;Username=unused;Password=unused");
 
-            var connection = new SqliteConnection("Data Source=:memory:");
-            connection.Open();
+            var connectionString = Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING");
+            if (string.IsNullOrWhiteSpace(connectionString))
+                throw new InvalidOperationException("ONTRACK_DATABASE_CONNECT_STRING must be set to run CVE tests against Postgres.");
 
             var options = new DbContextOptionsBuilder<OnTrackDBContext>()
-                .UseSqlite(connection)
+                .UseNpgsql(connectionString)
                 .Options;
 
             var db = new OnTrackDBContext(options);
-            db.Database.EnsureCreated();
 
+            var now = DateTime.UtcNow;
+            var runId = Guid.NewGuid().ToString("N")[..8];
             var organization = new UserOrganization
             {
                 Id = Guid.NewGuid(),
                 CreatorId = Guid.NewGuid(),
-                CreatedAt = DateTime.UtcNow.AddDays(-30),
-                SubscriptionPlan = db.OrganizationalSubscriptionPlans.First(),
+                CreatedAt = now.AddDays(-30),
+                SubscriptionPlan = null,
                 Users = new List<User>(),
                 OrganizationalTrackers = new List<UserTracker>(),
             };
@@ -204,20 +200,31 @@ public class TrackingSnippetTests
                 Id = Guid.NewGuid(),
                 Organization = organization,
                 OrganizationId = organization.Id,
-                Email = "owner@example.com",
+                Email = $"cve-test-{runId}@example.com",
                 Password = "unused",
-                CreatedAt = DateTime.UtcNow.AddDays(-30),
+                CreatedAt = now.AddDays(-30),
                 ResetPasswordToken = string.Empty,
                 UserState = "Admin",
-                ExtraProperties = new List<UserExtraProperty>(),
+                ExtraProperties = new List<UserExtraProperty>
+                {
+                    new UserExtraProperty
+                    {
+                        Id = Guid.NewGuid(),
+                        PropertyKey = "FullName",
+                        PropertyValue = $"CVE Test {runId}",
+                    }
+                },
                 UserRoles = new List<UserOrganizationalRoleAssociation>(),
             };
+
+            foreach (var prop in user.ExtraProperties)
+                prop.Parent = user;
 
             var tracker = new UserTracker
             {
                 Id = Guid.NewGuid(),
                 Organization = organization,
-                CreatedAt = DateTime.UtcNow.AddDays(-30),
+                CreatedAt = now.AddDays(-30),
                 Campaigns = new List<TrackingCampaign>(),
             };
 
@@ -225,8 +232,8 @@ public class TrackingSnippetTests
             {
                 Id = Guid.NewGuid(),
                 ParentTracker = tracker,
-                CreatedAt = DateTime.UtcNow.AddDays(-7),
-                CampaignName = "Test Campaign",
+                CreatedAt = now.AddDays(-7),
+                CampaignName = $"CVE Test Campaign {runId}",
                 Platform = "google",
                 ConversionValue = "100",
                 Clicks = new List<TrackerClick>(),
@@ -237,13 +244,13 @@ public class TrackingSnippetTests
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = organization.Id,
-                TierName = "Starter CVE",
+                TierName = $"CVE Test Contract {runId}",
                 CommittedAnnualCVEs = 100,
-                ContractStartDate = DateTime.UtcNow.AddDays(-1),
-                ContractEndDate = DateTime.UtcNow.AddYears(1),
+                ContractStartDate = now.AddDays(-1),
+                ContractEndDate = now.AddYears(1),
                 CVEHardLimitEnabled = true,
-                CreatedAt = DateTime.UtcNow.AddDays(-1),
-                UpdatedAt = DateTime.UtcNow.AddDays(-1),
+                CreatedAt = now.AddDays(-1),
+                UpdatedAt = now.AddDays(-1),
             };
 
             organization.Users.Add(user);
@@ -252,18 +259,20 @@ public class TrackingSnippetTests
 
             db.UserOrganizations.Add(organization);
             db.Users.Add(user);
+            db.UserExtraProperties.AddRange(user.ExtraProperties);
             db.UserTrackers.Add(tracker);
             db.TrackingCampaigns.Add(campaign);
+            db.SaveChanges();
+
             db.OrganizationCveContracts.Add(contract);
             db.SaveChanges();
 
-            return new TrackingTestHarness(connection, db, user, organization, tracker, campaign, contract);
+            return new TrackingTestHarness(db, user, organization, tracker, campaign, contract);
         }
 
         public void Dispose()
         {
             Db.Dispose();
-            _connection.Dispose();
         }
     }
 }

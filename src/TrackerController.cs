@@ -128,7 +128,7 @@ public class TrackerController {
 			IdempotencyKey = $"javascript-postback:{trackerClick.Id}",
 			SubmittedAtUtc = submittedAtUtc,
 			OriginalEventTimestampUtc = trackerClick.ConversionDate ?? submittedAtUtc,
-			Status = "received",
+			Status = "Verified",
 			CountsTowardCve = false,
 			RequestHash = ComputeRequestHash(request, trackerClick.Id),
 			Source = "javascript_postback",
@@ -137,12 +137,12 @@ public class TrackerController {
 		};
 
 		if (originalEvent != null) {
-			cveEvent.Status = "duplicate";
+			cveEvent.Status = "Duplicate";
 			cveEvent.DuplicateOfEventId = originalEvent.Id;
 			cveEvent.RejectionReason = "Duplicate conversion received for tracker click.";
 		}
 		else if (contract == null) {
-			cveEvent.Status = "rejected";
+			cveEvent.Status = "Unmatched";
 			cveEvent.RejectionReason = "No active CVE contract matched this conversion.";
 		}
 		else {
@@ -151,13 +151,13 @@ public class TrackerController {
 				e.CountsTowardCve);
 
 			if (contract.CVEHardLimitEnabled && countedEvents >= contract.CommittedAnnualCVEs) {
-				cveEvent.Status = "rejected";
+				cveEvent.Status = "Rejected";
 				cveEvent.RejectionReason = "CVE hard limit reached for active contract.";
 				if (contract.UpgradeRequiredTriggeredAt == null)
 					contract.UpgradeRequiredTriggeredAt = submittedAtUtc;
 			}
 			else {
-				cveEvent.Status = "counted";
+				cveEvent.Status = "Verified";
 				cveEvent.CountsTowardCve = true;
 				cveEvent.CountedAtUtc = submittedAtUtc;
 
@@ -334,5 +334,4 @@ public class TrackerController {
 		return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
 	}
 }
-
 
