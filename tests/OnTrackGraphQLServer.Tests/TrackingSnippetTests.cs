@@ -102,6 +102,44 @@ public class TrackingSnippetTests
         Assert.Equal("checkout.example.com", site.Domain);
     }
 
+    [Fact]
+    public async Task CveQueries_AreAvailableToNonAdminUsers_AndReturnOnlyCurrentOrganizationData()
+    {
+        using var viewerHarness = TrackingTestHarness.Create(userState: "Viewer");
+        using var otherHarness = TrackingTestHarness.Create(userState: "Viewer");
+        var context = CreateResolveFieldContext(viewerHarness.User.Id);
+
+        var viewerClickId = await CreateClickAsync(
+            viewerHarness.Db,
+            viewerHarness.Tracker.Id,
+            viewerHarness.Campaign.Id,
+            "https://viewer.example.com/thank-you");
+        await TrackerController.RegisterPostbackAsync(
+            viewerHarness.Db,
+            CreateRequest(origin: "https://viewer.example.com"),
+            viewerClickId.ToString());
+
+        var otherClickId = await CreateClickAsync(
+            otherHarness.Db,
+            otherHarness.Tracker.Id,
+            otherHarness.Campaign.Id,
+            "https://other.example.com/thank-you");
+        await TrackerController.RegisterPostbackAsync(
+            otherHarness.Db,
+            CreateRequest(origin: "https://other.example.com"),
+            otherClickId.ToString());
+
+        var legacyResults = Query.adminCves(context, viewerHarness.Db);
+        var userResults = Query.myCves(context, viewerHarness.Db);
+
+        Assert.Single(legacyResults);
+        Assert.Single(userResults);
+        Assert.Equal(viewerClickId, legacyResults[0].TrackerClickId);
+        Assert.Equal(viewerClickId, userResults[0].TrackerClickId);
+        Assert.DoesNotContain(legacyResults, cve => cve.TrackerClickId == otherClickId);
+        Assert.DoesNotContain(userResults, cve => cve.TrackerClickId == otherClickId);
+    }
+
     private static async Task<Guid> CreateClickAsync(OnTrackDBContext db, Guid trackerId, Guid campaignId, string url)
     {
         return await TrackerController.RegisterClickAsync(
@@ -167,7 +205,7 @@ public class TrackingSnippetTests
             Contract = contract;
         }
 
-        public static TrackingTestHarness Create()
+        public static TrackingTestHarness Create(string userState = "Admin")
         {
             Environment.SetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL", "https://tracking.test");
             Environment.SetEnvironmentVariable("ONTRACK_SITE_URL", "https://app.test/");
@@ -204,7 +242,7 @@ public class TrackingSnippetTests
                 Password = "unused",
                 CreatedAt = now.AddDays(-30),
                 ResetPasswordToken = string.Empty,
-                UserState = "Admin",
+                UserState = userState,
                 ExtraProperties = new List<UserExtraProperty>
                 {
                     new UserExtraProperty

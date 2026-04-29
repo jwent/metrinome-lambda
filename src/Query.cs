@@ -75,12 +75,8 @@ public class Query
 		var currentUser = onTrackDBContext.Users
 			.AsNoTracking()
 			.Where(u => u.Id == userId)
-			.Select(u => new { u.OrganizationId, u.UserState })
+			.Select(u => new { u.OrganizationId })
 			.First();
-
-		if (!string.Equals(currentUser.UserState, "Admin", StringComparison.OrdinalIgnoreCase)) {
-			throw new ExecutionError("Admin access required.");
-		}
 
 		List<AdminCveData> cves;
 		try {
@@ -127,6 +123,11 @@ public class Query
 		}
 
 		return cves;
+	}
+
+	[Authorize(Policy = "CustomerPolicy")]
+	public static List<AdminCveData> myCves(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
+		return adminCves(context, onTrackDBContext);
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]
