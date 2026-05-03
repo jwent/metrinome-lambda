@@ -58,67 +58,17 @@ public class OnTrackDBContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        var starterMonthly = StripePlanConfiguration.GetPlanDetails(StripePlanConfiguration.StarterMonthlyKey);
-        var starterYearly = StripePlanConfiguration.GetPlanDetails(StripePlanConfiguration.StarterYearlyKey);
-        var advancedMonthly = StripePlanConfiguration.GetPlanDetails(StripePlanConfiguration.AdvancedMonthlyKey);
-        var advancedYearly = StripePlanConfiguration.GetPlanDetails(StripePlanConfiguration.AdvancedYearlyKey);
-
         modelBuilder.Entity<OrganizationalSubscriptionPlan>().HasData(
-            // Starter Monthly
-            new OrganizationalSubscriptionPlan
+            SubscriptionPlanCatalog.GetAllPlans().Select(plan => new OrganizationalSubscriptionPlan
             {
-                Id = Guid.NewGuid(),
-                PlanKey = starterMonthly.PlanKey,
-                PlanName = starterMonthly.Name,
-                UsersLimitPerPlan = 1,
-                CampaignsLimitPerPlan = 10,
-                CanUseInsightAnalytics = false,
-                IsFreePlan = false,
-            },
-            // Starter Yearly
-            new OrganizationalSubscriptionPlan
-            {
-                Id = Guid.NewGuid(),
-                PlanKey = starterYearly.PlanKey,
-                PlanName = starterYearly.Name,
-                UsersLimitPerPlan = 1,
-                CampaignsLimitPerPlan = 10,
-                CanUseInsightAnalytics = false,
-                IsFreePlan = false,
-            },
-            // Advanced Monthly
-            new OrganizationalSubscriptionPlan
-            {
-                Id = Guid.NewGuid(),
-                PlanKey = advancedMonthly.PlanKey,
-                PlanName = advancedMonthly.Name,
-                UsersLimitPerPlan = 3,
-                CampaignsLimitPerPlan = 50,
-                CanUseInsightAnalytics = true,
-                IsFreePlan = false,
-            },
-            // Advanced Yearly
-            new OrganizationalSubscriptionPlan
-            {
-                Id = Guid.NewGuid(),
-                PlanKey = advancedYearly.PlanKey,
-                PlanName = advancedYearly.Name,
-                UsersLimitPerPlan = 3,
-                CampaignsLimitPerPlan = 50,
-                CanUseInsightAnalytics = true,
-                IsFreePlan = false,
-            },
-            // Trial
-            new OrganizationalSubscriptionPlan
-            {
-                Id = Guid.NewGuid(),
-                PlanKey = "trial",
-                PlanName = "Trial Plan",
-                UsersLimitPerPlan = 1,
-                CampaignsLimitPerPlan = 1,
-                CanUseInsightAnalytics = false,
-                IsFreePlan = true,
-            }
+                Id = plan.Id,
+                PlanKey = plan.PlanKey,
+                PlanName = plan.Name,
+                UsersLimitPerPlan = plan.UsersLimitPerPlan,
+                CampaignsLimitPerPlan = plan.CampaignsLimitPerPlan,
+                CanUseInsightAnalytics = plan.CanUseInsightAnalytics,
+                IsFreePlan = plan.IsFreePlan,
+            }).ToArray()
         );
 
         base.OnModelCreating(modelBuilder);

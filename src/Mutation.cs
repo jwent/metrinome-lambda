@@ -7,9 +7,7 @@ using GraphQL;
 using GraphQL.Authorization;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Stripe;
-using Stripe.TestHelpers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -17,13 +15,12 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using StripeCustomerService = Stripe.CustomerService;
 
 public class Mutation {
-    private const string StarterMonthlyPlanKey  = StripePlanConfiguration.StarterMonthlyKey;
-    private const string StarterYearlyPlanKey   = StripePlanConfiguration.StarterYearlyKey;
-    private const string AdvancedMonthlyPlanKey = StripePlanConfiguration.AdvancedMonthlyKey;
-    private const string AdvancedYearlyPlanKey  = StripePlanConfiguration.AdvancedYearlyKey;
+    private const string StarterMonthlyPlanKey  = SubscriptionPlanCatalog.StarterMonthlyKey;
+    private const string StarterYearlyPlanKey   = SubscriptionPlanCatalog.StarterYearlyKey;
+    private const string AdvancedMonthlyPlanKey = SubscriptionPlanCatalog.AdvancedMonthlyKey;
+    private const string AdvancedYearlyPlanKey  = SubscriptionPlanCatalog.AdvancedYearlyKey;
 
     //[Authorize(Policy = "AdminPolicy")] // optional; adjust to CustomerPolicy if you prefer
     public static async Task<SuccessResponse> runTrialExpirationTest([FromServices] OnTrackDBContext onTrackDBContext)
@@ -42,6 +39,113 @@ public class Mutation {
         {
             Console.WriteLine($"[!] Error running trial expiration check: {ex}");
             return new SuccessResponse { Success = false };
+        }
+    }
+
+    private static OrganizationalSubscriptionPlan? FindSubscriptionPlan(OnTrackDBContext onTrackDBContext, string? planKey)
+    {
+        if (string.IsNullOrWhiteSpace(planKey))
+            return null;
+
+        var trimmedPlanKey = planKey.Trim();
+        return onTrackDBContext.OrganizationalSubscriptionPlans.FirstOrDefault(plan => plan.PlanKey == trimmedPlanKey);
+    }
+
+    private static SuccessOrErrorResponse AssignOrganizationSubscriptionPlan(
+        OnTrackDBContext onTrackDBContext,
+        User user,
+        string? planKey)
+    {
+        var plan = FindSubscriptionPlan(onTrackDBContext, planKey);
+        if (plan == null)
+            return new SuccessOrErrorResponse { Success = false, Error = $"Unknown plan '{planKey}'." };
+
+        UserController.AssignSubscriptionPlan(onTrackDBContext, user.Organization, plan.PlanKey, DateTime.UtcNow);
+        onTrackDBContext.SaveChanges();
+        return new SuccessOrErrorResponse { Success = true };
+    }
+
+    private static bool TryConfigureStripe(out string error)
+    {
+        var stripeSecretKey = Environment.GetEnvironmentVariable("ONTRACK_STRIPE_SECRET_KEY")?.Trim();
+        if (string.IsNullOrWhiteSpace(stripeSecretKey))
+        {
+            error = "Stripe is not configured.";
+            return false;
+        }
+
+        StripeConfiguration.ApiKey = stripeSecretKey;
+        error = string.Empty;
+        return true;
+    }
+
+    private static string? GetStripePublishableKey() =>
+        Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY")?.Trim();
+
+    private static string? GetUserFullName(User user) =>
+        user.ExtraProperties.FirstOrDefault(p => p.PropertyKey == "FullName")?.PropertyValue?.Trim();
+
+    private static async Task<Customer?> FindStripeCustomerAsync(CustomerService customerService, User user)
+    {
+        var email = user.Email?.Trim();
+        if (string.IsNullOrWhiteSpace(email))
+            return null;
+
+        var customers = await customerService.ListAsync(new CustomerListOptions
+        {
+            Email = email,
+            Limit = 100,
+        });
+
+        return customers.Data.FirstOrDefault(customer =>
+                customer.Metadata != null &&
+                customer.Metadata.TryGetValue("ontrack_user_id", out var existingUserId) &&
+                existingUserId == user.Id.ToString())
+            ?? customers.Data.FirstOrDefault();
+    }
+
+    private static async Task<Customer> FindOrCreateStripeCustomerAsync(CustomerService customerService, User user)
+    {
+        var existingCustomer = await FindStripeCustomerAsync(customerService, user);
+        if (existingCustomer != null)
+            return existingCustomer;
+
+        return await customerService.CreateAsync(new CustomerCreateOptions
+        {
+            Email = user.Email?.Trim(),
+            Name = GetUserFullName(user),
+            Metadata = new Dictionary<string, string>
+            {
+                { "ontrack_user_id", user.Id.ToString() }
+            }
+        });
+    }
+
+    private static async Task<Subscription?> FindCurrentStripeSubscriptionAsync(SubscriptionService subscriptionService, string customerId)
+    {
+        var subscriptions = await subscriptionService.ListAsync(new SubscriptionListOptions
+        {
+            Customer = customerId,
+            Status = "all",
+            Limit = 20,
+        });
+
+        return subscriptions.Data
+            .OrderByDescending(subscription => subscription.Created)
+            .FirstOrDefault(subscription => !string.Equals(subscription.Status, "canceled", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static async Task AttachPaymentMethodIfNeededAsync(PaymentMethodService paymentMethodService, string paymentMethodId, string customerId)
+    {
+        try
+        {
+            await paymentMethodService.AttachAsync(paymentMethodId, new PaymentMethodAttachOptions
+            {
+                Customer = customerId,
+            });
+        }
+        catch (StripeException ex) when (ex.StripeError?.Code == "resource_already_exists")
+        {
         }
     }
 
@@ -296,6 +400,7 @@ public class Mutation {
 
         if (user == null)
         {
+            var trialPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, SubscriptionPlanCatalog.TrialKey);
             var newUser = new User
             {
                 Id = Guid.NewGuid(),
@@ -311,7 +416,8 @@ public class Mutation {
                 Id = Guid.NewGuid(),
                 CreatorId = newUser.Id,
                 CreatedAt = DateTime.Now,
-                SubscriptionPlan = null,
+                SubscriptionPlan = trialPlan,
+                SubscriptionTrialStartDate = DateTime.UtcNow,
             };
 
             newUser.Organization = newOrganization;
@@ -518,112 +624,90 @@ public class Mutation {
     public static Task<CreatePaymentIntentResponse> setupSubscription(
             IResolveFieldContext context,
             [FromServices] OnTrackDBContext onTrackDBContext,
-            [FromServices] PaymentIntentService paymentIntentService,
-            [FromServices] StripeCustomerService customerService,
-            [FromServices] ILogger<Mutation> logger,
             string plan)
     {
         Console.WriteLine($"[+] Starting subscription checkout for plan: {plan} for user: {UserController.GetCurrentUserId(context)}");
-        return startSubscriptionCheckout(context, onTrackDBContext, paymentIntentService, customerService, logger, plan);
+        return startSubscriptionCheckout(context, onTrackDBContext, plan);
 
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static async Task<CreatePaymentIntentResponse> startSubscriptionCheckout(
+    public static Task<CreatePaymentIntentResponse> startSubscriptionCheckout(
 		IResolveFieldContext context, 
 		[FromServices] OnTrackDBContext onTrackDBContext,
-        [FromServices] PaymentIntentService paymentIntentService,
-        [FromServices] StripeCustomerService customerService,
-        [FromServices] ILogger<Mutation> logger,
         string plan) 
 	{
+        if (!TryConfigureStripe(out var stripeError))
+            return Task.FromResult(new CreatePaymentIntentResponse { Success = false, Error = stripeError });
+
         var userId = UserController.GetCurrentUserId(context);
 		var user = onTrackDBContext.Users
                 .Include(u => u.ExtraProperties)
-                .Include(u => u.Organization.SubscriptionPlan)
 				.First(u => u.Id == userId);
 
-        var customerEmail = user.Email?.Trim();
-        var fullName = user.ExtraProperties
-            .FirstOrDefault(p => p.PropertyKey == "FullName")
-            ?.PropertyValue?.Trim();
-
         if (string.IsNullOrWhiteSpace(plan))
-			return new CreatePaymentIntentResponse { Success = false, Error = "missing plan" };
+			return Task.FromResult(new CreatePaymentIntentResponse { Success = false, Error = "missing plan" });
 
-		plan = plan.Trim();
-
-        IReadOnlyDictionary<string, StripePlanDetails> SubscriptionPlanOptions =
-			StripePlanConfiguration.GetAllPlans().ToDictionary(plan => plan.PlanKey);
-
-		// check that the plan is valid
-		if (!SubscriptionPlanOptions.ContainsKey(plan))
-			return new CreatePaymentIntentResponse { Success = false, Error = "invalid plan" };
-
-		OrganizationalSubscriptionPlan? selectedPlan;
-		try {
-		    selectedPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, plan);
-		} 
-        catch (InvalidOperationException) {
-		    return new CreatePaymentIntentResponse { Success = false, Error = "plan unavailable" };
-		}
-
-		user.Organization.SubscriptionPlan = selectedPlan;
-		onTrackDBContext.SaveChanges();
-
-        var stripeCustomer = await customerService.CreateAsync(new CustomerCreateOptions
+        StripePlanDetails planDetails;
+        try
         {
-            Email = customerEmail,   // 👈 critical: this is what shows in Stripe dashboard
-            Name = fullName,
-            Metadata = new Dictionary<string, string>
+            planDetails = StripePlanConfiguration.GetPlanDetails(plan.Trim());
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult(new CreatePaymentIntentResponse { Success = false, Error = ex.Message });
+        }
+
+		if (FindSubscriptionPlan(onTrackDBContext, planDetails.PlanKey) == null)
+			return Task.FromResult(new CreatePaymentIntentResponse { Success = false, Error = "invalid plan" });
+
+        var customerService = new CustomerService();
+        var paymentIntentService = new PaymentIntentService();
+
+        return CreateSubscriptionCheckoutAsync(user, planDetails, customerService, paymentIntentService);
+    }
+
+    private static async Task<CreatePaymentIntentResponse> CreateSubscriptionCheckoutAsync(
+        User user,
+        StripePlanDetails planDetails,
+        CustomerService customerService,
+        PaymentIntentService paymentIntentService)
+    {
+        try
+        {
+            var customer = await FindOrCreateStripeCustomerAsync(customerService, user);
+            var paymentIntent = await paymentIntentService.CreateAsync(new PaymentIntentCreateOptions
             {
-                { "ontrack_user_id", user.Id.ToString() }
-                // you can also add plan info etc. here if useful
-            }
-        });
+                Amount = planDetails.AmountCents,
+                Currency = planDetails.Currency,
+                ReceiptEmail = user.Email?.Trim(),
+                Customer = customer.Id,
+                AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
+                {
+                    Enabled = true,
+                },
+                Metadata = new Dictionary<string, string>
+                {
+                    { "planKey", planDetails.PlanKey },
+                    { "userId", user.Id.ToString() }
+                }
+            });
 
-
-        var planDetails = SubscriptionPlanOptions[plan];
-
-		var options = new PaymentIntentCreateOptions
-		{
-			Amount = planDetails.AmountCents,
-			Currency = planDetails.Currency,
-            ReceiptEmail = customerEmail,
-            Customer = stripeCustomer.Id,
-
-            AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
-			{
-				Enabled = true,
-			},
-			Metadata = new Dictionary<string, string>
-		    {
-			    { "planKey", planDetails.PlanKey },
-			    { "userId", user.Id.ToString() }
-		    }
-    };
-
-    try
-    {
-        var paymentIntent = await paymentIntentService.CreateAsync(options);
-
-        return new CreatePaymentIntentResponse
+            return new CreatePaymentIntentResponse
+            {
+                Success = true,
+                ClientSecret = paymentIntent.ClientSecret,
+            };
+        }
+        catch (StripeException ex)
         {
-            Success = true,
-            ClientSecret = paymentIntent.ClientSecret,
-        };
+            return new CreatePaymentIntentResponse { Success = false, Error = ex.StripeError?.Message ?? "Stripe error" };
+        }
+        catch (Exception ex)
+        {
+            return new CreatePaymentIntentResponse { Success = false, Error = ex.Message };
+        }
     }
-    catch (StripeException ex)
-    {
-        logger.LogError(ex, "Failed to create payment intent for subscription.");
-        return new CreatePaymentIntentResponse { Success = false, Error = ex.StripeError?.Message ?? "Stripe error" };
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Unexpected error during subscription checkout.");
-        return new CreatePaymentIntentResponse { Success = false, Error = "Unexpected error" };
-    }
-}
 
     [Authorize(Policy = "CustomerPolicy")]
         public static SuccessResponse checkPayment(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
@@ -632,255 +716,247 @@ public class Mutation {
                         .Include(u => u.Organization.SubscriptionPlan)
                         .First(u => u.Id == userId);
 
-                user.Organization.SubscriptionPlan = user.Organization.SubscriptionPlan ?? UserController.GetSubscriptionPlanByKey(onTrackDBContext, StarterMonthlyPlanKey);
+                UserController.AssignSubscriptionPlan(onTrackDBContext, user.Organization, StarterMonthlyPlanKey, DateTime.UtcNow);
                 onTrackDBContext.SaveChanges();
 
                 return new SuccessResponse { Success=true };
         }
 
-        public static async Task<CreatePaymentIntentResponse> createPaymentIntent(
-                [FromServices] PaymentIntentService paymentIntentService,
-                [FromServices] ILogger<Mutation> logger,
+        public static Task<CreatePaymentIntentResponse> createPaymentIntent(
                 long amount,
                 string currency,
                 string? plan) {
+                if (!TryConfigureStripe(out var stripeError))
+                        return Task.FromResult(new CreatePaymentIntentResponse { Success = false, Error = stripeError });
+
                 if (amount <= 0)
-                        return new CreatePaymentIntentResponse { Success = false, Error = "Amount must be greater than zero." };
+                        return Task.FromResult(new CreatePaymentIntentResponse { Success = false, Error = "Amount must be greater than zero." });
 
                 if (string.IsNullOrWhiteSpace(currency))
-                        return new CreatePaymentIntentResponse { Success = false, Error = "Currency is required." };
+                        return Task.FromResult(new CreatePaymentIntentResponse { Success = false, Error = "Currency is required." });
 
-                var trimmedCurrency = currency.Trim();
                 var metadata = new Dictionary<string, string>();
-
                 if (!string.IsNullOrWhiteSpace(plan))
                         metadata["plan"] = plan.Trim();
 
-                var options = new PaymentIntentCreateOptions {
-                        Amount = amount,
-                        Currency = trimmedCurrency.ToLowerInvariant(),
-                        AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions {
-                                Enabled = true,
-                        },
-                        Metadata = metadata.Count > 0 ? metadata : null,
-                };
-
-                try {
-                        var paymentIntent = await paymentIntentService.CreateAsync(options);
-                        return new CreatePaymentIntentResponse {
-                                Success = true,
-                                ClientSecret = paymentIntent.ClientSecret,
-                        };
-                } catch (StripeException ex) {
-                        logger.LogError(ex, "Failed to create Stripe payment intent.");
-                        return new CreatePaymentIntentResponse {
-                                Success = false,
-                                Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
-                        };
-                } catch (Exception ex) {
-                        logger.LogError(ex, "Unexpected error while creating payment intent.");
-                        return new CreatePaymentIntentResponse {
-                                Success = false,
-                                Error = "Unable to create payment intent.",
-                        };
-                }
+                var paymentIntentService = new PaymentIntentService();
+                return CreateGenericPaymentIntentAsync(paymentIntentService, amount, currency.Trim(), metadata);
         }
 
+    private static async Task<CreatePaymentIntentResponse> CreateGenericPaymentIntentAsync(
+        PaymentIntentService paymentIntentService,
+        long amount,
+        string currency,
+        Dictionary<string, string> metadata)
+    {
+        try
+        {
+            var paymentIntent = await paymentIntentService.CreateAsync(new PaymentIntentCreateOptions
+            {
+                Amount = amount,
+                Currency = currency.ToLowerInvariant(),
+                AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
+                {
+                    Enabled = true,
+                },
+                Metadata = metadata.Count > 0 ? metadata : null,
+            });
+
+            return new CreatePaymentIntentResponse
+            {
+                Success = true,
+                ClientSecret = paymentIntent.ClientSecret,
+            };
+        }
+        catch (StripeException ex)
+        {
+            return new CreatePaymentIntentResponse
+            {
+                Success = false,
+                Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
+            };
+        }
+        catch (Exception ex)
+        {
+            return new CreatePaymentIntentResponse
+            {
+                Success = false,
+                Error = ex.Message,
+            };
+        }
+    }
+
     [Authorize(Policy = "CustomerPolicy")]
-    public static async Task<CreateSubscriptionResponse> completeSubscription(
+    public static Task<CreateSubscriptionResponse> completeSubscription(
         IResolveFieldContext context,
-        [FromServices] StripeCustomerService customerService,
-        [FromServices] SubscriptionService subscriptionService,
-        [FromServices] PaymentMethodService paymentMethodService,
-        [FromServices] ILogger<Mutation> logger,
         [FromServices] OnTrackDBContext onTrackDBContext,
         string clientSecret,
         string planKey,
         string paymentMethodId,
         string priceId)
     {
+        if (!TryConfigureStripe(out var stripeError))
+            return Task.FromResult(new CreateSubscriptionResponse { Success = false, Error = stripeError });
+
         var userId = UserController.GetCurrentUserId(context);
         var user = onTrackDBContext.Users
             .Include(u => u.ExtraProperties)
+            .Include(u => u.Organization.SubscriptionPlan)
             .First(u => u.Id == userId);
 
-        var fullName = user.ExtraProperties
-            .FirstOrDefault(p => p.PropertyKey == "FullName")?.PropertyValue;
-        var customerEmail = user.Email;
-        var customerName = fullName;
-
         if (string.IsNullOrWhiteSpace(planKey))
-            return new CreateSubscriptionResponse { Success = false, Error = "Plan is required." };
-
-        var trimmedPlanKey = planKey.Trim();
-        var planDetails = StripePlanConfiguration.GetPlanDetails(trimmedPlanKey);
-
-        if (planDetails == null)
-            return new CreateSubscriptionResponse { Success = false, Error = "Invalid plan." };
-
+            return Task.FromResult(new CreateSubscriptionResponse { Success = false, Error = "Plan is required." });
         if (string.IsNullOrWhiteSpace(paymentMethodId))
-            return new CreateSubscriptionResponse { Success = false, Error = "Payment method is required." };
+            return Task.FromResult(new CreateSubscriptionResponse { Success = false, Error = "Payment method is required." });
 
-        var trimmedPaymentMethodId = paymentMethodId.Trim();
-        var trimmedCustomerEmail = customerEmail?.Trim() ?? "";
+        var selectedPlan = FindSubscriptionPlan(onTrackDBContext, planKey);
+        if (selectedPlan == null)
+            return Task.FromResult(new CreateSubscriptionResponse { Success = false, Error = "Invalid plan." });
 
-        // ✅ Determine trial period length
-        int? trialDays = null;
-        if (trimmedPlanKey == StripePlanConfiguration.StarterYearlyKey ||
-            trimmedPlanKey == StripePlanConfiguration.AdvancedYearlyKey)
-        {
-            trialDays = 14; // 14 days free trial for yearly plans
-        }
-        else
-        {
-            trialDays = 7; // 7 days free trial for monthly plans
-        }
+        var wasAlreadySubscribed = string.Equals(
+            user.Organization.SubscriptionPlan?.PlanKey,
+            selectedPlan.PlanKey,
+            StringComparison.OrdinalIgnoreCase);
 
-            // 🔹 Fetch or create Stripe customer (unchanged)
-            Customer? customer = null;
+        var customerService = new CustomerService();
+        var paymentMethodService = new PaymentMethodService();
+        var subscriptionService = new SubscriptionService();
+        return CompleteStripeSubscriptionAsync(
+            onTrackDBContext,
+            user,
+            selectedPlan,
+            wasAlreadySubscribed,
+            paymentMethodId.Trim(),
+            priceId,
+            customerService,
+            paymentMethodService,
+            subscriptionService);
+    }
+
+    private static async Task<CreateSubscriptionResponse> CompleteStripeSubscriptionAsync(
+        OnTrackDBContext onTrackDBContext,
+        User user,
+        OrganizationalSubscriptionPlan selectedPlan,
+        bool wasAlreadySubscribed,
+        string paymentMethodId,
+        string? priceId,
+        CustomerService customerService,
+        PaymentMethodService paymentMethodService,
+        SubscriptionService subscriptionService)
+    {
         try
         {
-            var existingCustomers = await customerService.ListAsync(new CustomerListOptions
-            {
-                Email = trimmedCustomerEmail,
-                Limit = 1,
-            });
-            customer = existingCustomers.Data.FirstOrDefault();
-        }
-        catch (StripeException ex)
-        {
-            logger.LogError(ex, "Failed to list Stripe customers.");
-            return new CreateSubscriptionResponse { Success = false, Error = ex.StripeError?.Message ?? "Stripe rejected the request." };
-        }
+            var customer = await FindOrCreateStripeCustomerAsync(customerService, user);
+            await AttachPaymentMethodIfNeededAsync(paymentMethodService, paymentMethodId, customer.Id);
 
-        if (customer == null)
-        {
-            try
+            await customerService.UpdateAsync(customer.Id, new CustomerUpdateOptions
             {
-                customer = await customerService.CreateAsync(new CustomerCreateOptions
+                Email = user.Email?.Trim(),
+                Name = GetUserFullName(user),
+                InvoiceSettings = new CustomerInvoiceSettingsOptions
                 {
-                    Email = trimmedCustomerEmail,
-                    Name = customerName?.Trim(),
-                    Metadata = new Dictionary<string, string> { { "planKey", planDetails.PlanKey } },
+                    DefaultPaymentMethod = paymentMethodId
+                }
+            });
+
+            var price = !string.IsNullOrWhiteSpace(priceId)
+                ? priceId.Trim()
+                : StripePlanConfiguration.GetPlanDetails(selectedPlan.PlanKey).ResolvePriceIdFromEnvironment()
+                    ?? StripePlanConfiguration.GetPlanDetails(selectedPlan.PlanKey).PriceId;
+
+            var existingSubscription = await FindCurrentStripeSubscriptionAsync(subscriptionService, customer.Id);
+            Subscription subscription;
+            if (existingSubscription == null)
+            {
+                subscription = await subscriptionService.CreateAsync(new SubscriptionCreateOptions
+                {
+                    Customer = customer.Id,
+                    DefaultPaymentMethod = paymentMethodId,
+                    Items = new List<SubscriptionItemOptions>
+                    {
+                        new SubscriptionItemOptions { Price = price },
+                    },
+                    PaymentBehavior = "default_incomplete",
+                    PaymentSettings = new SubscriptionPaymentSettingsOptions
+                    {
+                        PaymentMethodTypes = new List<string> { "card" },
+                        SaveDefaultPaymentMethod = "on_subscription",
+                    },
+                    CollectionMethod = "charge_automatically",
+                    Metadata = new Dictionary<string, string>
+                    {
+                        { "planKey", selectedPlan.PlanKey },
+                        { "userId", user.Id.ToString() }
+                    },
+                    Expand = new List<string> { "latest_invoice.payment_intent" },
                 });
             }
-            catch (StripeException ex)
+            else
             {
-                logger.LogError(ex, "Failed to create Stripe customer.");
-                return new CreateSubscriptionResponse { Success = false, Error = ex.StripeError?.Message ?? "Stripe rejected the request." };
+                subscription = await subscriptionService.UpdateAsync(existingSubscription.Id, new SubscriptionUpdateOptions
+                {
+                    DefaultPaymentMethod = paymentMethodId,
+                    CancelAtPeriodEnd = false,
+                    ProrationBehavior = "create_prorations",
+                    Items = new List<SubscriptionItemOptions>
+                    {
+                        new SubscriptionItemOptions
+                        {
+                            Id = existingSubscription.Items.Data[0].Id,
+                            Price = price,
+                        }
+                    },
+                    Metadata = new Dictionary<string, string>
+                    {
+                        { "planKey", selectedPlan.PlanKey },
+                        { "userId", user.Id.ToString() }
+                    },
+                    Expand = new List<string> { "latest_invoice.payment_intent" },
+                });
             }
-        }
 
-        // 🔹 Attach payment method (unchanged)
-        try
-        {
-            await paymentMethodService.AttachAsync(trimmedPaymentMethodId, new PaymentMethodAttachOptions
-            {
-                Customer = customer.Id,
-            });
-        }
-        catch (StripeException ex) when (ex.StripeError?.Code == "resource_already_exists")
-        {
-            logger.LogDebug("Payment method already attached to customer {CustomerId}.", customer.Id);
-        }
-
-        // 2️⃣ Attach the payment method the user entered
-        await paymentMethodService.AttachAsync(paymentMethodId, new PaymentMethodAttachOptions
-        {
-            Customer = customer.Id,
-        });
-
-        await customerService.UpdateAsync(customer.Id, new CustomerUpdateOptions
-        {
-            Email = trimmedCustomerEmail,
-            Name = customerName?.Trim(),
-            InvoiceSettings = new CustomerInvoiceSettingsOptions
-            {
-                DefaultPaymentMethod = paymentMethodId
-            }
-        });
-
-        // 🔹 Create subscription with con1ditional trial
-        try
-        {
-            var subscriptionOptions = new SubscriptionCreateOptions
-            {
-                Customer = customer.Id,
-                DefaultPaymentMethod = paymentMethodId,
-                TrialPeriodDays = trialDays,
-                Items = new List<SubscriptionItemOptions>
-                {
-                    new SubscriptionItemOptions { Price = priceId },
-                },
-                PaymentBehavior = "default_incomplete",
-                PaymentSettings = new SubscriptionPaymentSettingsOptions
-                {
-                    PaymentMethodTypes = new List<string> { "card" },
-                    SaveDefaultPaymentMethod = "on_subscription",
-                },
-                CollectionMethod = "charge_automatically",
-                Metadata = new Dictionary<string, string>
-                {
-                    { "planKey", planDetails.PlanKey },
-                },
-                Expand = new List<string> { "latest_invoice.payment_intent" },
-            };
-
-            var subscription = await subscriptionService.CreateAsync(subscriptionOptions);
+            UserController.AssignSubscriptionPlan(onTrackDBContext, user.Organization, selectedPlan.PlanKey, DateTime.UtcNow);
+            if (string.Equals(user.UserState, "subscribed", StringComparison.OrdinalIgnoreCase))
+                user.UserState = "Active";
+            onTrackDBContext.SaveChanges();
 
             var latestInvoice = subscription.LatestInvoice as Invoice;
             var paymentIntent = latestInvoice?.PaymentIntent;
-            var publishableKey = Environment.GetEnvironmentVariable("STRIPE_PUBLISHABLE_KEY")?.Trim();
-
-            if (string.IsNullOrWhiteSpace(user.StripeCustomerId))
-            {
-                user.StripeCustomerId = customer.Id;
-                user.UserState = "subscribed";
-                onTrackDBContext.SaveChanges();
-            }
-
-            if (paymentIntent == null || string.IsNullOrWhiteSpace(paymentIntent.ClientSecret))
-            {
-                logger.LogDebug("Subscription {SubscriptionId} created without payment intent.", subscription.Id);
-                
-                return new CreateSubscriptionResponse
-                {
-                    Success = true,
-                    SubscriptionId = subscription.Id,
-                    CustomerId = customer.Id,
-                    PublishableKey = publishableKey,
-                    PlanKey = planDetails.PlanKey,
-                };
-            }
-
             return new CreateSubscriptionResponse
             {
                 Success = true,
-                ClientSecret = paymentIntent.ClientSecret,
+                AlreadySubscribed = wasAlreadySubscribed && existingSubscription != null,
+                ClientSecret = paymentIntent?.ClientSecret,
                 SubscriptionId = subscription.Id,
                 CustomerId = customer.Id,
-                PublishableKey = publishableKey,
-                PlanKey = planDetails.PlanKey,
-                RequiresAction = paymentIntent.Status == "requires_action" ||
-                                 paymentIntent.Status == "requires_payment_method",
+                PublishableKey = GetStripePublishableKey(),
+                PlanKey = selectedPlan.PlanKey,
+                PriceId = price,
+                RequiresAction = paymentIntent?.Status == "requires_action" ||
+                                 paymentIntent?.Status == "requires_payment_method",
             };
         }
         catch (StripeException ex)
         {
-            logger.LogError(ex, "Failed to create Stripe subscription.");
             return new CreateSubscriptionResponse
             {
                 Success = false,
                 Error = ex.StripeError?.Message ?? "Stripe rejected the request.",
             };
         }
+        catch (Exception ex)
+        {
+            return new CreateSubscriptionResponse
+            {
+                Success = false,
+                Error = ex.Message,
+            };
+        }
     }
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static async Task<SuccessOrErrorResponse> cancelSubscription(
+    public static Task<SuccessOrErrorResponse> cancelSubscription(
         [FromServices] OnTrackDBContext onTrackDBContext,
-        [FromServices] SubscriptionService subscriptionService,
-        [FromServices] StripeCustomerService customerService,
         IResolveFieldContext context)
     {
         try
@@ -891,78 +967,40 @@ public class Mutation {
                     .Include(u => u.Organization.SubscriptionPlan)
                     .First(u => u.Id == userId);
 
-            var email = user.Email?.Trim();
-            var fullName = user.ExtraProperties
-                .FirstOrDefault(p => p.PropertyKey == "FullName")
-                ?.PropertyValue?.Trim();
-
-            var claimsPrincipal = user;
-
-            if (string.IsNullOrWhiteSpace(email))
+            if (TryConfigureStripe(out _))
             {
-                Console.WriteLine("[cancelSubscription] Missing email claim.");
-                return new SuccessOrErrorResponse { Success = false, Error = "User not authenticated." };
+                var customerService = new CustomerService();
+                var subscriptionService = new SubscriptionService();
+                CancelStripeSubscriptionAsync(customerService, subscriptionService, user).GetAwaiter().GetResult();
             }
 
-            // 🔹 Lookup DB user
-            var dbUser = await onTrackDBContext.Users
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Email == email && u.UserState == "Active");
+            UserController.AssignSubscriptionPlan(onTrackDBContext, user.Organization, SubscriptionPlanCatalog.TrialKey, DateTime.UtcNow);
+            user.Organization.SubscriptionTrialStartDate = null;
+            onTrackDBContext.SaveChanges();
 
-            if (dbUser == null)
-            {
-                Console.WriteLine($"[cancelSubscription] No active user found for {email}");
-                return new SuccessOrErrorResponse { Success = false, Error = "User not found." };
-            }
-
-            if (string.IsNullOrWhiteSpace(dbUser.StripeCustomerId))
-            {
-                Console.WriteLine($"[cancelSubscription] User {email} has no StripeCustomerId");
-                return new SuccessOrErrorResponse { Success = false, Error = "No Stripe customer ID found." };
-            }
-
-            // 🔹 Get active subscription from Stripe
-            var subscriptions = await subscriptionService.ListAsync(new SubscriptionListOptions
-            {
-                Customer = dbUser.StripeCustomerId,
-                Status = "active",
-                Limit = 1
-            });
-
-            if (subscriptions.Data.Count == 0)
-            {
-                Console.WriteLine($"[cancelSubscription] No active subscriptions found for {email}");
-                return new SuccessOrErrorResponse { Success = false, Error = "No active subscriptions found." };
-            }
-
-            var subscriptionId = subscriptions.Data.First().Id;
-
-            // 🔹 Cancel subscription
-            var canceled = await subscriptionService.CancelAsync(subscriptionId);
-            Console.WriteLine($"[cancelSubscription] Subscription {subscriptionId} canceled for {email}");
-
-            // 🔹 Update DB if necessary
-            var org = await onTrackDBContext.UserOrganizations
-                .FirstOrDefaultAsync(o => o.Id == dbUser.OrganizationId);
-
-            if (org != null)
-            {
-                org.SubscriptionPlan = null;
-                await onTrackDBContext.SaveChangesAsync();
-            }
-
-            return new SuccessOrErrorResponse { Success = true };
-        }
-        catch (StripeException ex)
-        {
-            Console.WriteLine($"[cancelSubscription] Stripe error: {ex.Message}");
-            return new SuccessOrErrorResponse { Success = false, Error = ex.Message };
+            return Task.FromResult(new SuccessOrErrorResponse { Success = true });
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[cancelSubscription] Unexpected error: {ex.Message}");
-            return new SuccessOrErrorResponse { Success = false, Error = "An unexpected error occurred." };
+            return Task.FromResult(new SuccessOrErrorResponse { Success = false, Error = "An unexpected error occurred." });
         }
+    }
+
+    private static async Task CancelStripeSubscriptionAsync(
+        CustomerService customerService,
+        SubscriptionService subscriptionService,
+        User user)
+    {
+        var customer = await FindStripeCustomerAsync(customerService, user);
+        if (customer == null)
+            return;
+
+        var subscription = await FindCurrentStripeSubscriptionAsync(subscriptionService, customer.Id);
+        if (subscription == null)
+            return;
+
+        await subscriptionService.CancelAsync(subscription.Id);
     }
 
     public static async Task<AddUserResponse> addUser([FromServices] OnTrackDBContext onTrackDBContext, string fullname, string email, string password, Boolean canUseMagicLink)
@@ -1019,7 +1057,8 @@ public class Mutation {
             Id = Guid.NewGuid(),
             CreatorId = newUser.Id,
             CreatedAt = DateTime.Now,
-            SubscriptionPlan = null,
+            SubscriptionPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, SubscriptionPlanCatalog.TrialKey),
+            SubscriptionTrialStartDate = DateTime.UtcNow,
         };
         newUser.Organization = newOrganization;
         var newRole = new UserOrganizationalRoleAssociation
@@ -1117,8 +1156,9 @@ public class Mutation {
 		if (email.Length > 128)
 			return new AddUserResponse { Error="Invalid or duplicate email." };
 
+		var subscriptionPlan = UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, user.Organization);
 		// check if the organization subscription plan allows for this additional user
-		if (user.Organization.SubscriptionPlan == null || user.Organization.Users.Count >= user.Organization.SubscriptionPlan.UsersLimitPerPlan) {
+		if (user.Organization.Users.Count >= subscriptionPlan.UsersLimitPerPlan) {
 			Console.WriteLine($"[+] organization has reached users limit! denied!");
 			return new AddUserResponse { Error="Your subscription plan has reached user limit." };
 		}
@@ -1279,8 +1319,9 @@ public class Mutation {
 		Console.WriteLine($"[+] searching user trackers by userId: {userId}");
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
+		var subscriptionPlan = UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, user.Organization);
 		// check if the organization subscription plan allows for this additional campaign
-		if (user.Organization.SubscriptionPlan == null || user.Organization.OrganizationalTrackers[0].Campaigns.Count >= user.Organization.SubscriptionPlan.CampaignsLimitPerPlan) {
+		if (user.Organization.OrganizationalTrackers[0].Campaigns.Count >= subscriptionPlan.CampaignsLimitPerPlan) {
 			Console.WriteLine($"[+] organization has reached campaigns limit! denied!");
 			return null;
 		}
@@ -1385,65 +1426,28 @@ public class Mutation {
     public static async Task<SuccessOrErrorResponse> changeSubscription(
         IResolveFieldContext context,
         [FromServices] OnTrackDBContext onTrackDBContext,
-        [FromServices] SubscriptionService subscriptionService,
         string planKey)
     {
         try
         {
-            // Get user email from JWT claims
             var userId = UserController.GetCurrentUserId(context);
             var user = onTrackDBContext.Users
-                    .Include(u => u.ExtraProperties)
                     .Include(u => u.Organization.SubscriptionPlan)
                     .First(u => u.Id == userId);
 
-            var email = user.Email?.Trim();
-
-            if (string.IsNullOrEmpty(email))
-                return new SuccessOrErrorResponse { Success = false, Error = "User not authenticated." };
-
-            // Find user in DB
-            var dbUser = onTrackDBContext.Users.FirstOrDefault(u => u.Email == email);
-            if (dbUser == null || string.IsNullOrEmpty(dbUser.StripeCustomerId))
-                return new SuccessOrErrorResponse { Success = false, Error = "Stripe customer not found." };
-
-            // Lookup the Stripe plan
             var plan = await onTrackDBContext.OrganizationalSubscriptionPlans.AsNoTracking().FirstOrDefaultAsync(p => p.PlanKey == planKey);
             if (plan == null)
                 return new SuccessOrErrorResponse { Success = false, Error = $"Unknown plan '{planKey}'." };
 
-            // Retrieve active subscription
-            var subs = await subscriptionService.ListAsync(new SubscriptionListOptions
+            if (TryConfigureStripe(out _))
             {
-                Customer = dbUser.StripeCustomerId,
-                Status = "active",
-                Limit = 1
-            });
+                var customerService = new CustomerService();
+                var subscriptionService = new SubscriptionService();
+                await UpdateStripeSubscriptionAsync(customerService, subscriptionService, user, plan.PlanKey);
+            }
 
-            var currentSub = subs.Data.FirstOrDefault();
-            if (currentSub == null)
-                return new SuccessOrErrorResponse { Success = false, Error = "No active subscription found." };
-
-            var planDetails = StripePlanConfiguration.GetPlanDetails(planKey);
-            // Update subscription
-            var updateOptions = new SubscriptionUpdateOptions
-            {
-                CancelAtPeriodEnd = false, // apply immediately
-                ProrationBehavior = "create_prorations",
-                Items = new List<SubscriptionItemOptions>
-                {
-                    new SubscriptionItemOptions
-                    {
-                        Id = currentSub.Items.Data[0].Id,
-                        Plan = planDetails.PriceId,
-                    }
-                }
-            };
-
-            var updatedSub = await subscriptionService.UpdateAsync(currentSub.Id, updateOptions);
-            Console.WriteLine($"[Stripe] Updated subscription {updatedSub.Id} → plan {plan.PlanKey}");
-
-            //Update subscription status in db
+            UserController.AssignSubscriptionPlan(onTrackDBContext, user.Organization, plan.PlanKey, DateTime.UtcNow);
+            onTrackDBContext.SaveChanges();
 
             return new SuccessOrErrorResponse { Success = true };
         }
@@ -1452,6 +1456,43 @@ public class Mutation {
             Console.WriteLine($"[!] Failed to change subscription: {ex.Message}");
             return new SuccessOrErrorResponse { Success = false, Error = ex.Message };
         }
+    }
+
+    private static async Task UpdateStripeSubscriptionAsync(
+        CustomerService customerService,
+        SubscriptionService subscriptionService,
+        User user,
+        string planKey)
+    {
+        var customer = await FindStripeCustomerAsync(customerService, user);
+        if (customer == null)
+            return;
+
+        var subscription = await FindCurrentStripeSubscriptionAsync(subscriptionService, customer.Id);
+        if (subscription == null)
+            return;
+
+        var price = StripePlanConfiguration.GetPlanDetails(planKey).ResolvePriceIdFromEnvironment()
+            ?? StripePlanConfiguration.GetPlanDetails(planKey).PriceId;
+
+        await subscriptionService.UpdateAsync(subscription.Id, new SubscriptionUpdateOptions
+        {
+            CancelAtPeriodEnd = false,
+            ProrationBehavior = "create_prorations",
+            Items = new List<SubscriptionItemOptions>
+            {
+                new SubscriptionItemOptions
+                {
+                    Id = subscription.Items.Data[0].Id,
+                    Price = price,
+                }
+            },
+            Metadata = new Dictionary<string, string>
+            {
+                { "planKey", planKey },
+                { "userId", user.Id.ToString() }
+            }
+        });
     }
 
 }

@@ -32,9 +32,12 @@ public class TrackerController {
 
 		var userTracker = await onTrackDBContext.UserTrackers
 			.Include(t => t.Organization)
+				.ThenInclude(o => o.SubscriptionPlan)
 			.FirstOrDefaultAsync(t => t.Id == userTrackerId);
 		if (userTracker == null)
 			throw new BadHttpRequestException("Tracker not found.");
+		if (!UserController.CanTrackCves(userTracker.Organization, DateTime.UtcNow))
+			throw new BadHttpRequestException("Organization subscription is not active for click tracking.");
 
 		var clickUrl = DecodeBase64OrRaw(encodedUrl);
 		var referer = DecodeBase64OrRaw(encodedReferer);
@@ -73,6 +76,7 @@ public class TrackerController {
 		var trackerClick = await onTrackDBContext.TrackerClicks
 			.Include(c => c.ParentTracker)
 				.ThenInclude(t => t.Organization)
+					.ThenInclude(o => o.SubscriptionPlan)
 			.Include(c => c.Campaign)
 			.FirstOrDefaultAsync(c => c.Id == trackerClickId);
 		if (trackerClick == null || trackerClick.ParentTracker == null)
@@ -101,7 +105,8 @@ public class TrackerController {
 		TrackerClick trackerClick,
 		DateTime submittedAtUtc)
 	{
-		var organizationId = trackerClick.ParentTracker!.Organization.Id;
+		var organization = trackerClick.ParentTracker!.Organization;
+		var organizationId = organization.Id;
 		var site = await FindOrCreateSiteAsync(onTrackDBContext, trackerClick, submittedAtUtc);
 		var contract = await onTrackDBContext.OrganizationCveContracts
 			.Where(c =>
@@ -141,9 +146,14 @@ public class TrackerController {
 			cveEvent.DuplicateOfEventId = originalEvent.Id;
 			cveEvent.RejectionReason = "Duplicate conversion received for tracker click.";
 		}
+		else if (!UserController.CanTrackCves(organization, submittedAtUtc)) {
+			cveEvent.Status = "Rejected";
+			cveEvent.RejectionReason = "Organization subscription is not active for CVE tracking.";
+		}
 		else if (contract == null) {
-			cveEvent.Status = "Unmatched";
-			cveEvent.RejectionReason = "No active CVE contract matched this conversion.";
+			cveEvent.Status = "Verified";
+			cveEvent.CountsTowardCve = true;
+			cveEvent.CountedAtUtc = submittedAtUtc;
 		}
 		else {
 			var countedEvents = await onTrackDBContext.ConversionVerificationEvents.CountAsync(e =>
@@ -334,4 +344,3 @@ public class TrackerController {
 		return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
 	}
 }
-

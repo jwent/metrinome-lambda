@@ -4,7 +4,6 @@ using GraphQL.Validation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Stripe;
 using System.Security.Claims;
 using System.Text;
 
@@ -22,12 +21,6 @@ builder.Logging.AddFilter("GraphQL", LogLevel.Warning);
 
 //DEBUG
 builder.WebHost.UseUrls("http://localhost:8020");
-
-var stripeSecretKey = builder.Configuration["ONTRACK_STRIPE_SECRET_KEY"];
-if (string.IsNullOrWhiteSpace(stripeSecretKey)) {
-        throw new InvalidOperationException("Stripe secret key is not configured.");
-}
-StripeConfiguration.ApiKey = stripeSecretKey.Trim();
 
 builder.Services
 	.AddAWSLambdaHosting(LambdaEventSource.HttpApi)
@@ -86,11 +79,6 @@ builder.Services
     	// only expose stack traces if we are not in production
         opts.ExposeExceptionDetails = !Util.IsEnvironmentStage("PROD");
     }));
-
-builder.Services.AddSingleton<PaymentIntentService>();
-builder.Services.AddSingleton<CustomerService>();
-builder.Services.AddSingleton<SubscriptionService>();
-builder.Services.AddSingleton<PaymentMethodService>();
 
 var app = builder.Build();
 

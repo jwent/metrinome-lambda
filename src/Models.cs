@@ -16,7 +16,6 @@ public class User {
 	public DateTime CreatedAt { get; set; }
 	public string ResetPasswordToken { get; set; }
 	public string UserState { get; set; }
-    public string? StripeCustomerId { get; set; }
     public string? MagicLink { get; set; }
 
     [InverseProperty("Parent")]
@@ -177,4 +176,3 @@ public class TrackerClickExtraProperty {
 	public string PropertyKey { get; set; }
 	public string PropertyValue { get; set; }
 }
-

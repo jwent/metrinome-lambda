@@ -80,7 +80,64 @@ public class UserController {
 	}
 
 	public static OrganizationalSubscriptionPlan GetSubscriptionPlanByKey(OnTrackDBContext onTrackDBContext, String plankey) {
-		return onTrackDBContext.OrganizationalSubscriptionPlans.First(plan => plan.PlanKey == plankey);
+		var existingPlan = onTrackDBContext.OrganizationalSubscriptionPlans.FirstOrDefault(plan => plan.PlanKey == plankey);
+		if (existingPlan != null)
+			return existingPlan;
+
+		var planDetails = SubscriptionPlanCatalog.GetPlanDetails(plankey);
+		var createdPlan = new OrganizationalSubscriptionPlan {
+			Id = planDetails.Id,
+			PlanKey = planDetails.PlanKey,
+			PlanName = planDetails.Name,
+			UsersLimitPerPlan = planDetails.UsersLimitPerPlan,
+			CampaignsLimitPerPlan = planDetails.CampaignsLimitPerPlan,
+			CanUseInsightAnalytics = planDetails.CanUseInsightAnalytics,
+			IsFreePlan = planDetails.IsFreePlan,
+		};
+
+		onTrackDBContext.OrganizationalSubscriptionPlans.Add(createdPlan);
+		onTrackDBContext.SaveChanges();
+		return createdPlan;
+	}
+
+	public static OrganizationalSubscriptionPlan GetEffectiveSubscriptionPlan(OnTrackDBContext onTrackDBContext, UserOrganization organization) {
+		return organization.SubscriptionPlan ?? GetSubscriptionPlanByKey(onTrackDBContext, SubscriptionPlanCatalog.TrialKey);
+	}
+
+	public static void AssignSubscriptionPlan(
+		OnTrackDBContext onTrackDBContext,
+		UserOrganization organization,
+		string planKey,
+		DateTime appliedAtUtc)
+	{
+		var plan = GetSubscriptionPlanByKey(onTrackDBContext, planKey);
+		organization.SubscriptionPlan = plan;
+
+		if (string.Equals(planKey, SubscriptionPlanCatalog.TrialKey, StringComparison.OrdinalIgnoreCase)) {
+			organization.SubscriptionTrialStartDate ??= appliedAtUtc;
+		}
+		else {
+			organization.SubscriptionTrialStartDate = null;
+		}
+	}
+
+	public static string GetSubscriptionStatus(UserOrganization organization, DateTime asOfUtc) {
+		if (organization.SubscriptionPlan == null)
+			return "none";
+
+		if (!string.Equals(organization.SubscriptionPlan.PlanKey, SubscriptionPlanCatalog.TrialKey, StringComparison.OrdinalIgnoreCase))
+			return "active";
+
+		if (!organization.SubscriptionTrialStartDate.HasValue)
+			return "free";
+
+		var expiresAtUtc = organization.SubscriptionTrialStartDate.Value.AddDays(SubscriptionPlanCatalog.TrialDurationDays);
+		return expiresAtUtc >= asOfUtc ? "trialing" : "trial_expired";
+	}
+
+	public static bool CanTrackCves(UserOrganization organization, DateTime asOfUtc) {
+		var subscriptionStatus = GetSubscriptionStatus(organization, asOfUtc);
+		return subscriptionStatus == "active" || subscriptionStatus == "trialing";
 	}
 
         public static string? ValidatePasswordCreation(string password) {
@@ -95,5 +152,3 @@ public class UserController {
 		return null;
 	}
 }
-
-

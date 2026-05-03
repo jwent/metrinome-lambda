@@ -103,6 +103,45 @@ public class TrackingSnippetTests
     }
 
     [Fact]
+    public async Task ActiveSubscriptionWithoutContract_StillCountsCveEvent()
+    {
+        using var harness = TrackingTestHarness.Create(includeContract: false);
+
+        var clickId = await CreateClickAsync(
+            harness.Db,
+            harness.Tracker.Id,
+            harness.Campaign.Id,
+            "https://plan-backed.example.com/thank-you");
+
+        var created = await TrackerController.RegisterPostbackAsync(
+            harness.Db,
+            CreateRequest(origin: "https://plan-backed.example.com"),
+            clickId.ToString());
+
+        Assert.True(created);
+
+        var cve = await harness.Db.ConversionVerificationEvents.SingleAsync(e => e.TrackerClickId == clickId);
+        Assert.Equal("Verified", cve.Status);
+        Assert.True(cve.CountsTowardCve);
+        Assert.Null(cve.ContractId);
+    }
+
+    [Fact]
+    public async Task ExpiredTrialSubscription_DoesNotAcceptTrackedClicks()
+    {
+        using var harness = TrackingTestHarness.Create(
+            planKey: SubscriptionPlanCatalog.TrialKey,
+            subscriptionTrialStartDate: DateTime.UtcNow.AddDays(-(SubscriptionPlanCatalog.TrialDurationDays + 1)));
+
+        await Assert.ThrowsAsync<BadHttpRequestException>(() => TrackerController.RegisterClickAsync(
+            harness.Db,
+            CreateRequest(origin: "https://expired.example.com"),
+            harness.Tracker.Id.ToString(),
+            Encode("https://expired.example.com/?cid=" + harness.Campaign.Id),
+            Encode("https://google.com/search?q=ontrack")));
+    }
+
+    [Fact]
     public async Task CveQueries_AreAvailableToNonAdminUsers_AndReturnOnlyCurrentOrganizationData()
     {
         using var viewerHarness = TrackingTestHarness.Create(userState: "Viewer");
@@ -138,6 +177,57 @@ public class TrackingSnippetTests
         Assert.Equal(viewerClickId, userResults[0].TrackerClickId);
         Assert.DoesNotContain(legacyResults, cve => cve.TrackerClickId == otherClickId);
         Assert.DoesNotContain(userResults, cve => cve.TrackerClickId == otherClickId);
+    }
+
+    [Fact]
+    public async Task AccountSummary_ReturnsContractUsageMetrics_FromProcessedCves()
+    {
+        using var harness = TrackingTestHarness.Create();
+        var context = CreateResolveFieldContext(harness.User.Id);
+
+        var firstClickId = await CreateClickAsync(
+            harness.Db,
+            harness.Tracker.Id,
+            harness.Campaign.Id,
+            "https://summary.example.com/thank-you-one");
+        var secondClickId = await CreateClickAsync(
+            harness.Db,
+            harness.Tracker.Id,
+            harness.Campaign.Id,
+            "https://summary.example.com/thank-you-two");
+
+        await TrackerController.RegisterPostbackAsync(
+            harness.Db,
+            CreateRequest(origin: "https://summary.example.com"),
+            firstClickId.ToString());
+        await TrackerController.RegisterPostbackAsync(
+            harness.Db,
+            CreateRequest(origin: "https://summary.example.com"),
+            secondClickId.ToString());
+
+        var summary = Query.accountSummary(context, harness.Db);
+
+        Assert.True(summary.Success);
+        Assert.Equal(harness.Organization.Id, summary.OrganizationId);
+        Assert.Equal(1, summary.UserCount);
+        Assert.Equal(1, summary.CampaignCount);
+        Assert.Equal(2, summary.TotalCves);
+        Assert.Equal(2, summary.CountedCves);
+        Assert.Equal(2, summary.CurrentPeriodCountedCves);
+        Assert.Equal(2, summary.CurrentPeriodProcessedCves);
+        Assert.Equal("Core", summary.ContractTierName);
+        Assert.Equal(20000, summary.CurrentPeriodCveLimit);
+        Assert.Equal(20000, summary.CommittedAnnualCves);
+        Assert.Equal(19998, summary.RemainingCommittedCves);
+        Assert.Equal(150, summary.RatePerCveCents);
+        Assert.Equal(3000000, summary.AnnualMinimumFeeCents);
+        Assert.Equal(3000000, summary.AnnualContractValueCents);
+        Assert.Equal(3000000, summary.CurrentPlanCostCents);
+        Assert.Equal(300, summary.UsageCostCents);
+        Assert.Equal(300, summary.UsageValueCents);
+        Assert.Equal("starter_monthly_plan", summary.SubscriptionPlan?.PlanKey);
+        Assert.Equal("active", summary.SubscriptionStatus);
+        Assert.NotNull(summary.CostCalculation);
     }
 
     private static async Task<Guid> CreateClickAsync(OnTrackDBContext db, Guid trackerId, Guid campaignId, string url)
@@ -205,7 +295,11 @@ public class TrackingSnippetTests
             Contract = contract;
         }
 
-        public static TrackingTestHarness Create(string userState = "Admin")
+        public static TrackingTestHarness Create(
+            string userState = "Admin",
+            string planKey = SubscriptionPlanCatalog.StarterMonthlyKey,
+            DateTime? subscriptionTrialStartDate = null,
+            bool includeContract = true)
         {
             Environment.SetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL", "https://tracking.test");
             Environment.SetEnvironmentVariable("ONTRACK_SITE_URL", "https://app.test/");
@@ -220,6 +314,7 @@ public class TrackingSnippetTests
                 .Options;
 
             var db = new OnTrackDBContext(options);
+            var plan = UserController.GetSubscriptionPlanByKey(db, planKey);
 
             var now = DateTime.UtcNow;
             var runId = Guid.NewGuid().ToString("N")[..8];
@@ -228,7 +323,8 @@ public class TrackingSnippetTests
                 Id = Guid.NewGuid(),
                 CreatorId = Guid.NewGuid(),
                 CreatedAt = now.AddDays(-30),
-                SubscriptionPlan = null,
+                SubscriptionPlan = plan,
+                SubscriptionTrialStartDate = subscriptionTrialStartDate,
                 Users = new List<User>(),
                 OrganizationalTrackers = new List<UserTracker>(),
             };
@@ -282,8 +378,8 @@ public class TrackingSnippetTests
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = organization.Id,
-                TierName = $"CVE Test Contract {runId}",
-                CommittedAnnualCVEs = 100,
+                TierName = "Core",
+                CommittedAnnualCVEs = 20_000,
                 ContractStartDate = now.AddDays(-1),
                 ContractEndDate = now.AddYears(1),
                 CVEHardLimitEnabled = true,
@@ -302,8 +398,11 @@ public class TrackingSnippetTests
             db.TrackingCampaigns.Add(campaign);
             db.SaveChanges();
 
-            db.OrganizationCveContracts.Add(contract);
-            db.SaveChanges();
+            if (includeContract)
+            {
+                db.OrganizationCveContracts.Add(contract);
+                db.SaveChanges();
+            }
 
             return new TrackingTestHarness(db, user, organization, tracker, campaign, contract);
         }

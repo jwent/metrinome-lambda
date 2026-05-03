@@ -1,7 +1,6 @@
 ﻿using GraphQL;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
-using Stripe;
 using System.Diagnostics;
 using System.Security.Claims;
 
@@ -46,7 +45,7 @@ public class Query
 		return new OrganizationData {
 			CreatedAt=org.CreatedAt,
 			Users=userdatalist,
-			SubscriptionPlan=org.SubscriptionPlan,
+			SubscriptionPlan=UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, org),
 		};
 	}
 
@@ -128,6 +127,110 @@ public class Query
 	[Authorize(Policy = "CustomerPolicy")]
 	public static List<AdminCveData> myCves(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
 		return adminCves(context, onTrackDBContext);
+	}
+
+	[Authorize(Policy = "CustomerPolicy")]
+	public static AccountSummaryResponse accountSummary(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
+		try {
+			var organization = UserController.GetCurrentOrganization(context, onTrackDBContext);
+			var effectivePlan = UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, organization);
+			var subscriptionStatus = UserController.GetSubscriptionStatus(organization, DateTime.UtcNow);
+			var organizationId = organization.Id;
+
+			var users = organization.Users
+				.Select(user => new UserData {
+					Email = user.Email,
+					CreatedAt = user.CreatedAt,
+					FullName = user.ExtraProperties.FirstOrDefault(prop => prop.PropertyKey == "FullName")?.PropertyValue,
+					UserRoles = user.UserRoles.Select(role => role.RoleName).ToList(),
+					UserState = user.UserState,
+				})
+				.ToList();
+
+			var campaignCount = onTrackDBContext.TrackingCampaigns.Count(c => c.ParentTracker.Organization.Id == organizationId);
+			var totalCves = onTrackDBContext.ConversionVerificationEvents.Count(cve => cve.OrganizationId == organizationId);
+			var countedCves = onTrackDBContext.ConversionVerificationEvents.Count(cve => cve.OrganizationId == organizationId && cve.CountsTowardCve);
+
+			var activeContract = onTrackDBContext.OrganizationCveContracts
+				.Where(contract =>
+					contract.OrganizationId == organizationId &&
+					contract.ContractStartDate <= DateTime.UtcNow &&
+					contract.ContractEndDate >= DateTime.UtcNow)
+				.OrderByDescending(contract => contract.ContractStartDate)
+				.FirstOrDefault();
+			var pricing = CveContractPricingCatalog.Resolve(activeContract);
+
+			var currentPeriodCountedCves = activeContract == null
+				? countedCves
+				: onTrackDBContext.ConversionVerificationEvents.Count(cve =>
+					cve.OrganizationId == organizationId &&
+					cve.CountsTowardCve &&
+					cve.SubmittedAtUtc >= activeContract.ContractStartDate &&
+					cve.SubmittedAtUtc <= activeContract.ContractEndDate);
+			var currentPeriodProcessedCves = activeContract == null
+				? totalCves
+				: onTrackDBContext.ConversionVerificationEvents.Count(cve =>
+					cve.OrganizationId == organizationId &&
+					cve.SubmittedAtUtc >= activeContract.ContractStartDate &&
+					cve.SubmittedAtUtc <= activeContract.ContractEndDate);
+
+			long annualContractValueCents = pricing?.AnnualContractValueCents ?? 0;
+			long usageValueCents = pricing == null ? 0 : currentPeriodProcessedCves * pricing.RatePerCveCents;
+			long usageCostCents = usageValueCents;
+			string currency = pricing?.Currency ?? "usd";
+			string? costCalculation;
+			if (activeContract != null && pricing != null) {
+				costCalculation = $"Usage value is based on all processed CVEs in the active contract window ({currentPeriodProcessedCves}/{pricing.CommittedAnnualCves}) at {pricing.RatePerCveCents} cents per CVE. Annual contract value is the greater of the annual minimum fee or committed CVEs multiplied by the contract rate.";
+			}
+			else if (activeContract != null) {
+				costCalculation = "An active CVE contract exists, but pricing could not be derived from its tier or committed annual CVE capacity.";
+			}
+			else {
+				costCalculation = "No active CVE capacity contract is configured for this organization.";
+			}
+
+			return new AccountSummaryResponse {
+				Success = true,
+				OrganizationId = organizationId,
+				OrganizationCreatedAt = organization.CreatedAt,
+				Users = users,
+				SubscriptionPlan = effectivePlan,
+				SubscriptionStatus = subscriptionStatus,
+				UserCount = users.Count,
+				CampaignCount = campaignCount,
+				TotalCves = totalCves,
+				CountedCves = countedCves,
+				CurrentPeriodCountedCves = currentPeriodCountedCves,
+				CurrentPeriodProcessedCves = currentPeriodProcessedCves,
+				CurrentPeriodCveLimit = activeContract?.CommittedAnnualCVEs,
+				ContractTierName = activeContract?.TierName ?? pricing?.TierName,
+				CommittedAnnualCves = activeContract?.CommittedAnnualCVEs,
+				RemainingCommittedCves = activeContract == null
+					? null
+					: Math.Max(activeContract.CommittedAnnualCVEs - currentPeriodProcessedCves, 0),
+				RatePerCveCents = pricing?.RatePerCveCents ?? 0,
+				AnnualMinimumFeeCents = pricing?.AnnualMinimumFeeCents ?? 0,
+				AnnualContractValueCents = annualContractValueCents,
+				CurrentPlanCostCents = annualContractValueCents,
+				UsageCostCents = usageCostCents,
+				UsageValueCents = usageValueCents,
+				Currency = currency,
+				CostCalculation = costCalculation,
+			};
+		}
+		catch (PostgresException ex) when (ex.SqlState == "42P01") {
+			return new AccountSummaryResponse {
+				Success = false,
+				Error = "CVE schema is missing in the active database. Run scripts/cve-schema-migration.sql against the database configured by ONTRACK_DATABASE_CONNECT_STRING."
+			};
+		}
+		catch (Exception ex) {
+			Console.WriteLine($"[!] accountSummary error: {ex.Message}");
+			return new AccountSummaryResponse {
+				Success = false,
+				Error = ex.Message
+			};
+		}
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]
@@ -549,85 +652,51 @@ public class Query
 	}
 
     [Authorize(Policy = "CustomerPolicy")]
-    public static async Task<CurrentSubscriptionResponse> getCurrentSubscription(
+    public static Task<CurrentSubscriptionResponse> getCurrentSubscription(
         IResolveFieldContext context,
-        [FromServices] OnTrackDBContext onTrackDBContext,
-        [FromServices] SubscriptionService subscriptionService,
-        [FromServices] CustomerService customerService)
+        [FromServices] OnTrackDBContext onTrackDBContext)
     {
         try
         {
             var userId = UserController.GetCurrentUserId(context);
 
             var user = onTrackDBContext.Users
-                .Include(u => u.Organization)
+                .Include(u => u.Organization.SubscriptionPlan)
+                .Include(u => u.ExtraProperties)
                 .FirstOrDefault(u => u.Id == userId);
 
             if (user == null)
             {
-                return new CurrentSubscriptionResponse
+                return Task.FromResult(new CurrentSubscriptionResponse
                 {
                     Success = false,
                     Error = "User not found."
-                };
+                });
             }
 
-            var userEmail = user.Email;
-            
-			if (string.IsNullOrEmpty(userEmail))
-                return new CurrentSubscriptionResponse { Status = "no email" };
+            var effectivePlan = UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, user.Organization);
+            var fullName = user.ExtraProperties.FirstOrDefault(p => p.PropertyKey == "FullName")?.PropertyValue;
 
-            // If no customer exists yet, user cannot have any subscriptions
-            if (string.IsNullOrWhiteSpace(user.StripeCustomerId))
+            return Task.FromResult(new CurrentSubscriptionResponse
             {
-                return new CurrentSubscriptionResponse
-                {
-                    Success = true,
-                    PlanKey = null,
-                    Status = "none"
-                };
-            }
-
-            // 🔹 Retrieve active subscription
-            var subs = await subscriptionService.ListAsync(new SubscriptionListOptions
-            {
-                Customer = user.StripeCustomerId,
-                Limit = 1,
-                Status = "all"
+                Success = true,
+                PlanKey = effectivePlan.PlanKey,
+                PlanName = effectivePlan.PlanName,
+                Status = UserController.GetSubscriptionStatus(user.Organization, DateTime.UtcNow),
+                CustomerName = !string.IsNullOrWhiteSpace(fullName) ? fullName : user.Email
             });
-
-            var subscription = subs.Data.FirstOrDefault();
-            if (subscription == null)
-                return new CurrentSubscriptionResponse { Status = "none" };
-
-            var planKey = subscription.Metadata.ContainsKey("planKey")
-                ? subscription.Metadata["planKey"]
-                : "unknown";
-
-            string customerName = "unknown";
-            if (!string.IsNullOrEmpty(user.StripeCustomerId))
-            {
-                var customer = await customerService.GetAsync(user.StripeCustomerId);
-                if (customer != null && !string.IsNullOrEmpty(customer.Name))
-                    customerName = customer.Name;
-            }
-
-            return new CurrentSubscriptionResponse
-            {
-                PlanKey = planKey,
-                Status = subscription.Status ?? "unknown",
-                CustomerName = customerName
-            };
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[!] getCurrentSubscription error: {ex.Message}");
-			return new CurrentSubscriptionResponse
+			return Task.FromResult(new CurrentSubscriptionResponse
 			{
+				Success = false,
 				PlanKey = null,
 				Status = "error",
-				CustomerName = null
-			};
+				CustomerName = null,
+				Error = ex.Message
+			});
         }
     }
 }

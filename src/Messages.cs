@@ -248,6 +248,35 @@ public class CurrentSubscriptionResponse
 	public string? CustomerName { get; set; }
 }
 
+public class AccountSummaryResponse
+{
+	public bool? Success { get; set; }
+	public Guid? OrganizationId { get; set; }
+	public DateTime? OrganizationCreatedAt { get; set; }
+	public List<UserData>? Users { get; set; }
+	public OrganizationalSubscriptionPlan? SubscriptionPlan { get; set; }
+	public string? SubscriptionStatus { get; set; }
+	public int UserCount { get; set; }
+	public int CampaignCount { get; set; }
+	public int TotalCves { get; set; }
+	public int CountedCves { get; set; }
+	public int CurrentPeriodCountedCves { get; set; }
+	public int CurrentPeriodProcessedCves { get; set; }
+	public int? CurrentPeriodCveLimit { get; set; }
+	public string? ContractTierName { get; set; }
+	public int? CommittedAnnualCves { get; set; }
+	public int? RemainingCommittedCves { get; set; }
+	public long RatePerCveCents { get; set; }
+	public long AnnualMinimumFeeCents { get; set; }
+	public long AnnualContractValueCents { get; set; }
+	public long CurrentPlanCostCents { get; set; }
+	public long UsageCostCents { get; set; }
+	public long UsageValueCents { get; set; }
+	public string Currency { get; set; } = "usd";
+	public string? CostCalculation { get; set; }
+	public string? Error { get; set; }
+}
+
 public class AdminCveData
 {
 	public Guid Id { get; set; }

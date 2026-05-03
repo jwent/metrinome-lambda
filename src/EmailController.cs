@@ -2,7 +2,6 @@
 using Amazon.SimpleEmail;
 using Amazon.SimpleEmail.Model;
 using Microsoft.EntityFrameworkCore;
-using Stripe;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -65,7 +64,9 @@ public class EmailController
         // Only those expiring tomorrow
         var expiring = await dbContext.UserOrganizations
             .Where(o => o.SubscriptionTrialStartDate.HasValue &&
-                        o.SubscriptionTrialStartDate.Value.AddDays(14) == tomorrow)
+                        o.SubscriptionPlan != null &&
+                        o.SubscriptionPlan.PlanKey == SubscriptionPlanCatalog.TrialKey &&
+                        o.SubscriptionTrialStartDate.Value.AddDays(SubscriptionPlanCatalog.TrialDurationDays) == tomorrow)
             .Join(dbContext.Users,
                   org => org.Id,
                   user => user.OrganizationId,
@@ -76,7 +77,9 @@ public class EmailController
         {
             Console.WriteLine("[TEST] No trials expiring tomorrow — using first available trial for testing.");
             expiring = await dbContext.UserOrganizations
-                .Where(o => o.SubscriptionTrialStartDate.HasValue)
+                .Where(o => o.SubscriptionTrialStartDate.HasValue &&
+                            o.SubscriptionPlan != null &&
+                            o.SubscriptionPlan.PlanKey == SubscriptionPlanCatalog.TrialKey)
                 .Join(dbContext.Users,
                       org => org.Id,
                       user => user.OrganizationId,
@@ -90,11 +93,9 @@ public class EmailController
         foreach (var item in expiring)
         {
             var email = item.User.Email;
-            var stripeCustomerId = item.User.StripeCustomerId;
-            var expiry = item.Org.SubscriptionTrialStartDate.Value.AddDays(14);
+            var expiry = item.Org.SubscriptionTrialStartDate.Value.AddDays(SubscriptionPlanCatalog.TrialDurationDays);
 
             await SendTrialEndingEmailAsync(email, expiry);
-            await CreateStripeInvoiceAsync(stripeCustomerId);
         }
 
         Console.WriteLine("[✅] Trial expiration check complete.");
@@ -106,41 +107,9 @@ public class EmailController
         var body = $@"
         <p>Hi,</p>
         <p>Your OnTrack trial ends on <b>{expiry:D}</b>.</p>
-        <p>You’ll automatically be billed unless you cancel before then.</p>
+        <p>Update your organization subscription plan before then if you want higher limits and insights access.</p>
         <p>Thanks,<br>The OnTrack Team</p>";
 
         await SendEmail(email, subject, body);
-    }
-
-    private static async Task CreateStripeInvoiceAsync(string? stripeCustomerId)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(stripeCustomerId))
-            {
-                Console.WriteLine($"[!] Skipping invoice: no Stripe customer ID for user {stripeCustomerId}");
-                return;
-            }
-
-            StripeConfiguration.ApiKey = Environment.GetEnvironmentVariable("ONTRACK_STRIPE_SECRET_KEY");
-
-            var invoiceService = new InvoiceService();
-
-            var invoice = await invoiceService.CreateAsync(new InvoiceCreateOptions
-            {
-                Customer = stripeCustomerId,
-                AutoAdvance = true,
-                CollectionMethod = "send_invoice",
-                DaysUntilDue = 7
-            });
-
-            Console.WriteLine($"[Stripe] Created invoice {invoice.Id} for customer {invoice.CustomerId}");
-            var finalized = await invoiceService.FinalizeInvoiceAsync(invoice.Id);
-            Console.WriteLine($"[Stripe] Finalized invoice status: {finalized.Status}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[!] Stripe invoice creation failed: {ex.Message}");
-        }
     }
 }
