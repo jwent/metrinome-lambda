@@ -260,7 +260,9 @@ public class AccountSummaryResponse
 	public int CampaignCount { get; set; }
 	public int TotalCves { get; set; }
 	public int CountedCves { get; set; }
+	public int VerifiedCves { get; set; }
 	public int CurrentPeriodCountedCves { get; set; }
+	public int CurrentPeriodVerifiedCves { get; set; }
 	public int CurrentPeriodProcessedCves { get; set; }
 	public int? CurrentPeriodCveLimit { get; set; }
 	public string? ContractTierName { get; set; }

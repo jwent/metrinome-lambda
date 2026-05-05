@@ -127,6 +127,105 @@ public class TrackingSnippetTests
     }
 
     [Fact]
+    public async Task DuplicatePostbacks_CreateDuplicateCve_AndStillCountTowardUsage()
+    {
+        using var harness = TrackingTestHarness.Create();
+
+        var clickId = await CreateClickAsync(
+            harness.Db,
+            harness.Tracker.Id,
+            harness.Campaign.Id,
+            "https://duplicate.example.com/thank-you");
+
+        await TrackerController.RegisterPostbackAsync(
+            harness.Db,
+            CreateRequest(origin: "https://duplicate.example.com"),
+            clickId.ToString());
+        await TrackerController.RegisterPostbackAsync(
+            harness.Db,
+            CreateRequest(origin: "https://duplicate.example.com"),
+            clickId.ToString());
+
+        var cves = await harness.Db.ConversionVerificationEvents
+            .Where(e => e.TrackerClickId == clickId)
+            .OrderBy(e => e.SubmittedAtUtc)
+            .ToListAsync();
+
+        Assert.Equal(2, cves.Count);
+        Assert.Equal("Verified", cves[0].Status);
+        Assert.True(cves[0].CountsTowardCve);
+        Assert.Equal("Duplicate", cves[1].Status);
+        Assert.True(cves[1].CountsTowardCve);
+        Assert.NotNull(cves[1].CountedAtUtc);
+        Assert.Equal(cves[0].Id, cves[1].DuplicateOfEventId);
+        Assert.Null(cves[1].RejectionReason);
+    }
+
+    [Fact]
+    public async Task BotLikePostback_IsFlagged_AndStillCountsTowardUsage()
+    {
+        using var harness = TrackingTestHarness.Create();
+
+        var clickId = await TrackerController.RegisterClickAsync(
+            harness.Db,
+            CreateRequest(origin: "https://botlike.example.com", userAgent: "Googlebot/2.1 (+http://www.google.com/bot.html)"),
+            harness.Tracker.Id.ToString(),
+            Encode("https://botlike.example.com/thank-you?cid=" + harness.Campaign.Id),
+            Encode("https://google.com/search?q=ontrack"));
+
+        await TrackerController.RegisterPostbackAsync(
+            harness.Db,
+            CreateRequest(origin: "https://botlike.example.com"),
+            clickId.ToString());
+
+        var cve = await harness.Db.ConversionVerificationEvents.SingleAsync(e => e.TrackerClickId == clickId);
+
+        Assert.Equal("Flagged", cve.Status);
+        Assert.True(cve.CountsTowardCve);
+        Assert.NotNull(cve.CountedAtUtc);
+        Assert.Null(cve.RejectionReason);
+    }
+
+    [Fact]
+    public async Task HardLimitRejectedPostback_DoesNotCountTowardUsage()
+    {
+        using var harness = TrackingTestHarness.Create(committedAnnualCves: 1);
+
+        var firstClickId = await CreateClickAsync(
+            harness.Db,
+            harness.Tracker.Id,
+            harness.Campaign.Id,
+            "https://limit.example.com/thank-you-one");
+        var secondClickId = await CreateClickAsync(
+            harness.Db,
+            harness.Tracker.Id,
+            harness.Campaign.Id,
+            "https://limit.example.com/thank-you-two");
+
+        await TrackerController.RegisterPostbackAsync(
+            harness.Db,
+            CreateRequest(origin: "https://limit.example.com"),
+            firstClickId.ToString());
+        await TrackerController.RegisterPostbackAsync(
+            harness.Db,
+            CreateRequest(origin: "https://limit.example.com"),
+            secondClickId.ToString());
+
+        var cves = await harness.Db.ConversionVerificationEvents
+            .Where(e => e.OrganizationId == harness.Organization.Id)
+            .OrderBy(e => e.SubmittedAtUtc)
+            .ToListAsync();
+
+        Assert.Equal(2, cves.Count);
+        Assert.Equal("Verified", cves[0].Status);
+        Assert.True(cves[0].CountsTowardCve);
+        Assert.Equal("Rejected", cves[1].Status);
+        Assert.False(cves[1].CountsTowardCve);
+        Assert.Null(cves[1].CountedAtUtc);
+        Assert.Equal("CVE hard limit reached for active contract.", cves[1].RejectionReason);
+    }
+
+    [Fact]
     public async Task ExpiredTrialSubscription_DoesNotAcceptTrackedClicks()
     {
         using var harness = TrackingTestHarness.Create(
@@ -213,7 +312,9 @@ public class TrackingSnippetTests
         Assert.Equal(1, summary.CampaignCount);
         Assert.Equal(2, summary.TotalCves);
         Assert.Equal(2, summary.CountedCves);
+        Assert.Equal(2, summary.VerifiedCves);
         Assert.Equal(2, summary.CurrentPeriodCountedCves);
+        Assert.Equal(2, summary.CurrentPeriodVerifiedCves);
         Assert.Equal(2, summary.CurrentPeriodProcessedCves);
         Assert.Equal("Core", summary.ContractTierName);
         Assert.Equal(20000, summary.CurrentPeriodCveLimit);
@@ -256,11 +357,11 @@ public class TrackingSnippetTests
         };
     }
 
-    private static HttpRequest CreateRequest(string origin)
+    private static HttpRequest CreateRequest(string origin, string userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
     {
         var httpContext = new DefaultHttpContext();
         httpContext.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.42");
-        httpContext.Request.Headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)";
+        httpContext.Request.Headers["User-Agent"] = userAgent;
         httpContext.Request.Headers["CF-IPCountry"] = "US";
         httpContext.Request.Headers["X-Region"] = "NY";
         httpContext.Request.Headers["X-City"] = "New York";
@@ -299,7 +400,8 @@ public class TrackingSnippetTests
             string userState = "Admin",
             string planKey = SubscriptionPlanCatalog.StarterMonthlyKey,
             DateTime? subscriptionTrialStartDate = null,
-            bool includeContract = true)
+            bool includeContract = true,
+            int committedAnnualCves = 20_000)
         {
             Environment.SetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL", "https://tracking.test");
             Environment.SetEnvironmentVariable("ONTRACK_SITE_URL", "https://app.test/");
@@ -379,7 +481,7 @@ public class TrackingSnippetTests
                 Id = Guid.NewGuid(),
                 OrganizationId = organization.Id,
                 TierName = "Core",
-                CommittedAnnualCVEs = 20_000,
+                CommittedAnnualCVEs = committedAnnualCves,
                 ContractStartDate = now.AddDays(-1),
                 ContractEndDate = now.AddYears(1),
                 CVEHardLimitEnabled = true,

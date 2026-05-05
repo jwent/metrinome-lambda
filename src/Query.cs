@@ -148,8 +148,11 @@ public class Query
 				.ToList();
 
 			var campaignCount = onTrackDBContext.TrackingCampaigns.Count(c => c.ParentTracker.Organization.Id == organizationId);
-			var totalCves = onTrackDBContext.ConversionVerificationEvents.Count(cve => cve.OrganizationId == organizationId);
 			var countedCves = onTrackDBContext.ConversionVerificationEvents.Count(cve => cve.OrganizationId == organizationId && cve.CountsTowardCve);
+			var totalCves = countedCves;
+			var verifiedCves = onTrackDBContext.ConversionVerificationEvents.Count(cve =>
+				cve.OrganizationId == organizationId &&
+				cve.Status == "Verified");
 
 			var activeContract = onTrackDBContext.OrganizationCveContracts
 				.Where(contract =>
@@ -167,10 +170,18 @@ public class Query
 					cve.CountsTowardCve &&
 					cve.SubmittedAtUtc >= activeContract.ContractStartDate &&
 					cve.SubmittedAtUtc <= activeContract.ContractEndDate);
-			var currentPeriodProcessedCves = activeContract == null
-				? totalCves
+			var currentPeriodVerifiedCves = activeContract == null
+				? verifiedCves
 				: onTrackDBContext.ConversionVerificationEvents.Count(cve =>
 					cve.OrganizationId == organizationId &&
+					cve.Status == "Verified" &&
+					cve.SubmittedAtUtc >= activeContract.ContractStartDate &&
+					cve.SubmittedAtUtc <= activeContract.ContractEndDate);
+			var currentPeriodProcessedCves = activeContract == null
+				? countedCves
+				: onTrackDBContext.ConversionVerificationEvents.Count(cve =>
+					cve.OrganizationId == organizationId &&
+					cve.CountsTowardCve &&
 					cve.SubmittedAtUtc >= activeContract.ContractStartDate &&
 					cve.SubmittedAtUtc <= activeContract.ContractEndDate);
 
@@ -200,7 +211,9 @@ public class Query
 				CampaignCount = campaignCount,
 				TotalCves = totalCves,
 				CountedCves = countedCves,
+				VerifiedCves = verifiedCves,
 				CurrentPeriodCountedCves = currentPeriodCountedCves,
+				CurrentPeriodVerifiedCves = currentPeriodVerifiedCves,
 				CurrentPeriodProcessedCves = currentPeriodProcessedCves,
 				CurrentPeriodCveLimit = activeContract?.CommittedAnnualCVEs,
 				ContractTierName = activeContract?.TierName ?? pricing?.TierName,

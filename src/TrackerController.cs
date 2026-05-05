@@ -130,11 +130,12 @@ public class TrackerController {
 			TrackerClickId = trackerClick.Id,
 			ExternalSubmissionId = trackerClick.Id.ToString(),
 			ExternalConversionId = trackerClick.Id.ToString(),
-			IdempotencyKey = $"javascript-postback:{trackerClick.Id}",
+			IdempotencyKey = $"javascript-postback:{trackerClick.Id}:{Guid.NewGuid():N}",
 			SubmittedAtUtc = submittedAtUtc,
 			OriginalEventTimestampUtc = trackerClick.ConversionDate ?? submittedAtUtc,
-			Status = "Verified",
-			CountsTowardCve = false,
+			Status = trackerClick.IsBotClick == true ? "Flagged" : "Verified",
+			CountsTowardCve = true,
+			CountedAtUtc = submittedAtUtc,
 			RequestHash = ComputeRequestHash(request, trackerClick.Id),
 			Source = "javascript_postback",
 			CreatedAtUtc = submittedAtUtc,
@@ -144,16 +145,11 @@ public class TrackerController {
 		if (originalEvent != null) {
 			cveEvent.Status = "Duplicate";
 			cveEvent.DuplicateOfEventId = originalEvent.Id;
-			cveEvent.RejectionReason = "Duplicate conversion received for tracker click.";
 		}
 		else if (!UserController.CanTrackCves(organization, submittedAtUtc)) {
-			cveEvent.Status = "Rejected";
-			cveEvent.RejectionReason = "Organization subscription is not active for CVE tracking.";
+			RejectCveEvent(cveEvent, "Organization subscription is not active for CVE tracking.");
 		}
 		else if (contract == null) {
-			cveEvent.Status = "Verified";
-			cveEvent.CountsTowardCve = true;
-			cveEvent.CountedAtUtc = submittedAtUtc;
 		}
 		else {
 			var countedEvents = await onTrackDBContext.ConversionVerificationEvents.CountAsync(e =>
@@ -161,16 +157,11 @@ public class TrackerController {
 				e.CountsTowardCve);
 
 			if (contract.CVEHardLimitEnabled && countedEvents >= contract.CommittedAnnualCVEs) {
-				cveEvent.Status = "Rejected";
-				cveEvent.RejectionReason = "CVE hard limit reached for active contract.";
+				RejectCveEvent(cveEvent, "CVE hard limit reached for active contract.");
 				if (contract.UpgradeRequiredTriggeredAt == null)
 					contract.UpgradeRequiredTriggeredAt = submittedAtUtc;
 			}
 			else {
-				cveEvent.Status = "Verified";
-				cveEvent.CountsTowardCve = true;
-				cveEvent.CountedAtUtc = submittedAtUtc;
-
 				var newCount = countedEvents + 1;
 				if (contract.CommittedAnnualCVEs > 0) {
 					var usageRatio = (decimal)newCount / contract.CommittedAnnualCVEs;
@@ -184,6 +175,14 @@ public class TrackerController {
 
 		onTrackDBContext.ConversionVerificationEvents.Add(cveEvent);
 		await onTrackDBContext.SaveChangesAsync();
+	}
+
+	private static void RejectCveEvent(ConversionVerificationEvent cveEvent, string rejectionReason)
+	{
+		cveEvent.Status = "Rejected";
+		cveEvent.CountsTowardCve = false;
+		cveEvent.CountedAtUtc = null;
+		cveEvent.RejectionReason = rejectionReason;
 	}
 
 	private static async Task<OrganizationSite> FindOrCreateSiteAsync(
