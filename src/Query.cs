@@ -136,6 +136,14 @@ public class Query
 			var effectivePlan = UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, organization);
 			var subscriptionStatus = UserController.GetSubscriptionStatus(organization, DateTime.UtcNow);
 			var organizationId = organization.Id;
+			var ownerUser = organization.Users.FirstOrDefault(user => user.Id == organization.CreatorId)
+				?? organization.Users.FirstOrDefault();
+			var ownerName = ownerUser?.ExtraProperties.FirstOrDefault(prop => prop.PropertyKey == "FullName")?.PropertyValue;
+			var organizationName = !string.IsNullOrWhiteSpace(ownerName)
+				? $"{ownerName} Organization"
+				: !string.IsNullOrWhiteSpace(ownerUser?.Email)
+					? ownerUser.Email
+					: organizationId.ToString();
 
 			var users = organization.Users
 				.Select(user => new UserData {
@@ -203,6 +211,7 @@ public class Query
 			return new AccountSummaryResponse {
 				Success = true,
 				OrganizationId = organizationId,
+				OrganizationName = organizationName,
 				OrganizationCreatedAt = organization.CreatedAt,
 				Users = users,
 				SubscriptionPlan = effectivePlan,

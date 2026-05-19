@@ -252,6 +252,7 @@ public class AccountSummaryResponse
 {
 	public bool? Success { get; set; }
 	public Guid? OrganizationId { get; set; }
+	public string? OrganizationName { get; set; }
 	public DateTime? OrganizationCreatedAt { get; set; }
 	public List<UserData>? Users { get; set; }
 	public OrganizationalSubscriptionPlan? SubscriptionPlan { get; set; }

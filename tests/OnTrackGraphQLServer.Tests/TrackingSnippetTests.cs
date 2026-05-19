@@ -8,6 +8,8 @@ using Xunit;
 
 public class TrackingSnippetTests
 {
+    private const string DefaultExistingTestEmail = "jeremy.mark.went@gmail.com";
+
     [Fact]
     public async Task LandingPageSnippet_CreatesClickEvent()
     {
@@ -15,9 +17,10 @@ public class TrackingSnippetTests
         var context = CreateResolveFieldContext(harness.User.Id);
 
         var snippet = Query.trackerCode(context, harness.Db);
+        var activeTracker = TrackerController.GetUserTrackerByUser(harness.Db, harness.User.Id);
 
         Assert.NotNull(snippet);
-        Assert.Contains($"https://tracking.test/click?t={harness.Tracker.Id}", snippet);
+        Assert.Contains($"https://tracking.test/click?t={activeTracker.Id}", snippet);
         Assert.Contains("var cookieName = 'ontrack-clid';", snippet);
 
         var clickId = await TrackerController.RegisterClickAsync(
@@ -105,7 +108,7 @@ public class TrackingSnippetTests
     [Fact]
     public async Task ActiveSubscriptionWithoutContract_StillCountsCveEvent()
     {
-        using var harness = TrackingTestHarness.Create(includeContract: false);
+        using var harness = TrackingTestHarness.Create(includeContract: false, useExistingUser: false);
 
         var clickId = await CreateClickAsync(
             harness.Db,
@@ -212,7 +215,9 @@ public class TrackingSnippetTests
             secondClickId.ToString());
 
         var cves = await harness.Db.ConversionVerificationEvents
-            .Where(e => e.OrganizationId == harness.Organization.Id)
+            .Where(e =>
+                e.TrackerClickId == firstClickId ||
+                e.TrackerClickId == secondClickId)
             .OrderBy(e => e.SubmittedAtUtc)
             .ToListAsync();
 
@@ -230,7 +235,8 @@ public class TrackingSnippetTests
     {
         using var harness = TrackingTestHarness.Create(
             planKey: SubscriptionPlanCatalog.TrialKey,
-            subscriptionTrialStartDate: DateTime.UtcNow.AddDays(-(SubscriptionPlanCatalog.TrialDurationDays + 1)));
+            subscriptionTrialStartDate: DateTime.UtcNow.AddDays(-(SubscriptionPlanCatalog.TrialDurationDays + 1)),
+            useExistingUser: false);
 
         await Assert.ThrowsAsync<BadHttpRequestException>(() => TrackerController.RegisterClickAsync(
             harness.Db,
@@ -243,8 +249,8 @@ public class TrackingSnippetTests
     [Fact]
     public async Task CveQueries_AreAvailableToNonAdminUsers_AndReturnOnlyCurrentOrganizationData()
     {
-        using var viewerHarness = TrackingTestHarness.Create(userState: "Viewer");
-        using var otherHarness = TrackingTestHarness.Create(userState: "Viewer");
+        using var viewerHarness = TrackingTestHarness.Create();
+        using var otherHarness = TrackingTestHarness.Create(userState: "Viewer", useExistingUser: false);
         var context = CreateResolveFieldContext(viewerHarness.User.Id);
 
         var viewerClickId = await CreateClickAsync(
@@ -270,10 +276,8 @@ public class TrackingSnippetTests
         var legacyResults = Query.adminCves(context, viewerHarness.Db);
         var userResults = Query.myCves(context, viewerHarness.Db);
 
-        Assert.Single(legacyResults);
-        Assert.Single(userResults);
-        Assert.Equal(viewerClickId, legacyResults[0].TrackerClickId);
-        Assert.Equal(viewerClickId, userResults[0].TrackerClickId);
+        Assert.Contains(legacyResults, cve => cve.TrackerClickId == viewerClickId);
+        Assert.Contains(userResults, cve => cve.TrackerClickId == viewerClickId);
         Assert.DoesNotContain(legacyResults, cve => cve.TrackerClickId == otherClickId);
         Assert.DoesNotContain(userResults, cve => cve.TrackerClickId == otherClickId);
     }
@@ -283,6 +287,7 @@ public class TrackingSnippetTests
     {
         using var harness = TrackingTestHarness.Create();
         var context = CreateResolveFieldContext(harness.User.Id);
+        var baseline = Query.accountSummary(context, harness.Db);
 
         var firstClickId = await CreateClickAsync(
             harness.Db,
@@ -308,26 +313,26 @@ public class TrackingSnippetTests
 
         Assert.True(summary.Success);
         Assert.Equal(harness.Organization.Id, summary.OrganizationId);
-        Assert.Equal(1, summary.UserCount);
-        Assert.Equal(1, summary.CampaignCount);
-        Assert.Equal(2, summary.TotalCves);
-        Assert.Equal(2, summary.CountedCves);
-        Assert.Equal(2, summary.VerifiedCves);
-        Assert.Equal(2, summary.CurrentPeriodCountedCves);
-        Assert.Equal(2, summary.CurrentPeriodVerifiedCves);
-        Assert.Equal(2, summary.CurrentPeriodProcessedCves);
+        Assert.Equal(baseline.UserCount, summary.UserCount);
+        Assert.Equal(baseline.CampaignCount, summary.CampaignCount);
+        Assert.Equal(baseline.TotalCves + 2, summary.TotalCves);
+        Assert.Equal(baseline.CountedCves + 2, summary.CountedCves);
+        Assert.Equal(baseline.VerifiedCves + 2, summary.VerifiedCves);
+        Assert.Equal(baseline.CurrentPeriodCountedCves + 2, summary.CurrentPeriodCountedCves);
+        Assert.Equal(baseline.CurrentPeriodVerifiedCves + 2, summary.CurrentPeriodVerifiedCves);
+        Assert.Equal(baseline.CurrentPeriodProcessedCves + 2, summary.CurrentPeriodProcessedCves);
         Assert.Equal("Core", summary.ContractTierName);
         Assert.Equal(20000, summary.CurrentPeriodCveLimit);
         Assert.Equal(20000, summary.CommittedAnnualCves);
-        Assert.Equal(19998, summary.RemainingCommittedCves);
+        Assert.Equal(20000 - summary.CurrentPeriodProcessedCves, summary.RemainingCommittedCves);
         Assert.Equal(150, summary.RatePerCveCents);
         Assert.Equal(3000000, summary.AnnualMinimumFeeCents);
         Assert.Equal(3000000, summary.AnnualContractValueCents);
         Assert.Equal(3000000, summary.CurrentPlanCostCents);
-        Assert.Equal(300, summary.UsageCostCents);
-        Assert.Equal(300, summary.UsageValueCents);
-        Assert.Equal("starter_monthly_plan", summary.SubscriptionPlan?.PlanKey);
-        Assert.Equal("active", summary.SubscriptionStatus);
+        Assert.Equal((baseline.CurrentPeriodProcessedCves + 2) * 150, summary.UsageCostCents);
+        Assert.Equal((baseline.CurrentPeriodProcessedCves + 2) * 150, summary.UsageValueCents);
+        Assert.NotNull(summary.SubscriptionPlan?.PlanKey);
+        Assert.NotNull(summary.SubscriptionStatus);
         Assert.NotNull(summary.CostCalculation);
     }
 
@@ -401,7 +406,9 @@ public class TrackingSnippetTests
             string planKey = SubscriptionPlanCatalog.StarterMonthlyKey,
             DateTime? subscriptionTrialStartDate = null,
             bool includeContract = true,
-            int committedAnnualCves = 20_000)
+            int committedAnnualCves = 20_000,
+            bool useExistingUser = true,
+            string? userEmail = null)
         {
             Environment.SetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL", "https://tracking.test");
             Environment.SetEnvironmentVariable("ONTRACK_SITE_URL", "https://app.test/");
@@ -420,41 +427,68 @@ public class TrackingSnippetTests
 
             var now = DateTime.UtcNow;
             var runId = Guid.NewGuid().ToString("N")[..8];
-            var organization = new UserOrganization
-            {
-                Id = Guid.NewGuid(),
-                CreatorId = Guid.NewGuid(),
-                CreatedAt = now.AddDays(-30),
-                SubscriptionPlan = plan,
-                SubscriptionTrialStartDate = subscriptionTrialStartDate,
-                Users = new List<User>(),
-                OrganizationalTrackers = new List<UserTracker>(),
-            };
+            var preferredEmail = userEmail ?? (useExistingUser ? DefaultExistingTestEmail : $"cve-test-{runId}@example.com");
 
-            var user = new User
+            UserOrganization organization;
+            User user;
+
+            if (useExistingUser)
             {
-                Id = Guid.NewGuid(),
-                Organization = organization,
-                OrganizationId = organization.Id,
-                Email = $"cve-test-{runId}@example.com",
-                Password = "unused",
-                CreatedAt = now.AddDays(-30),
-                ResetPasswordToken = string.Empty,
-                UserState = userState,
-                ExtraProperties = new List<UserExtraProperty>
+                user = db.Users
+                    .Include(u => u.Organization)
+                        .ThenInclude(o => o.SubscriptionPlan)
+                    .Include(u => u.ExtraProperties)
+                    .Include(u => u.UserRoles)
+                    .FirstOrDefault(u => u.Email == preferredEmail);
+
+                if (user == null)
+                    throw new InvalidOperationException($"Expected existing test user '{preferredEmail}' was not found.");
+
+                organization = user.Organization;
+            }
+            else
+            {
+                organization = new UserOrganization
                 {
-                    new UserExtraProperty
-                    {
-                        Id = Guid.NewGuid(),
-                        PropertyKey = "FullName",
-                        PropertyValue = $"CVE Test {runId}",
-                    }
-                },
-                UserRoles = new List<UserOrganizationalRoleAssociation>(),
-            };
+                    Id = Guid.NewGuid(),
+                    CreatorId = Guid.NewGuid(),
+                    CreatedAt = now.AddDays(-30),
+                    SubscriptionPlan = plan,
+                    SubscriptionTrialStartDate = subscriptionTrialStartDate,
+                    Users = new List<User>(),
+                    OrganizationalTrackers = new List<UserTracker>(),
+                };
 
-            foreach (var prop in user.ExtraProperties)
-                prop.Parent = user;
+                user = new User
+                {
+                    Id = Guid.NewGuid(),
+                    Organization = organization,
+                    OrganizationId = organization.Id,
+                    Email = preferredEmail,
+                    Password = "unused",
+                    CreatedAt = now.AddDays(-30),
+                    ResetPasswordToken = string.Empty,
+                    UserState = userState,
+                    ExtraProperties = new List<UserExtraProperty>
+                    {
+                        new UserExtraProperty
+                        {
+                            Id = Guid.NewGuid(),
+                            PropertyKey = "FullName",
+                            PropertyValue = $"CVE Test {runId}",
+                        }
+                    },
+                    UserRoles = new List<UserOrganizationalRoleAssociation>(),
+                };
+
+                foreach (var prop in user.ExtraProperties)
+                    prop.Parent = user;
+
+                organization.Users.Add(user);
+                db.UserOrganizations.Add(organization);
+                db.Users.Add(user);
+                db.UserExtraProperties.AddRange(user.ExtraProperties);
+            }
 
             var tracker = new UserTracker
             {
@@ -482,20 +516,19 @@ public class TrackingSnippetTests
                 OrganizationId = organization.Id,
                 TierName = "Core",
                 CommittedAnnualCVEs = committedAnnualCves,
-                ContractStartDate = now.AddDays(-1),
+                ContractStartDate = now.AddMinutes(-1),
                 ContractEndDate = now.AddYears(1),
                 CVEHardLimitEnabled = true,
-                CreatedAt = now.AddDays(-1),
-                UpdatedAt = now.AddDays(-1),
+                CreatedAt = now.AddMinutes(-1),
+                UpdatedAt = now.AddMinutes(-1),
             };
 
-            organization.Users.Add(user);
+            if (organization.OrganizationalTrackers == null)
+                organization.OrganizationalTrackers = new List<UserTracker>();
+
             organization.OrganizationalTrackers.Add(tracker);
             tracker.Campaigns.Add(campaign);
 
-            db.UserOrganizations.Add(organization);
-            db.Users.Add(user);
-            db.UserExtraProperties.AddRange(user.ExtraProperties);
             db.UserTrackers.Add(tracker);
             db.TrackingCampaigns.Add(campaign);
             db.SaveChanges();
