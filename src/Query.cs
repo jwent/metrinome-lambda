@@ -262,7 +262,7 @@ public class Query
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 
 		var endpoint = (Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL") ?? string.Empty).TrimEnd('/');
-		var clickEndpoint = $"{endpoint}/click";
+		var clickEndpoint = endpoint;
 		return 
 			Util.CompressJavascriptStub(@"<script src=""" + Environment.GetEnvironmentVariable("ONTRACK_SITE_URL") + @"cdn/psl.min.js""></script>") + "\n"
 			+ Util.CompressJavascriptStub(@"<script type=""text/javascript"">
