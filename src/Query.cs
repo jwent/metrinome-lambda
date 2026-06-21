@@ -489,21 +489,39 @@ public class Query
 		// get the clicks by campaign
 		var clicksQuery = onTrackDBContext.TrackerClicks
 				.Where(e => e.Campaign.Id == campaign.Id);
-		// groupby sub-query based on which group we need
-		var subQuery =
-				groupby == "day" ? clicksQuery.GroupBy(f => new { Date = f.CreatedAt.Date, Hour = 0 }) :
-				groupby == "hour" ? clicksQuery.Where(t => t.CreatedAt > DateTime.Now.AddHours(-24)).GroupBy(f => new { Date = f.CreatedAt.Date, Hour = f.CreatedAt.Hour }) :
-				throw new Exception("invalid groupby");
 
-		// select the results
-		var stats = subQuery
-				.Select(g => new { datetime = groupby == "day" ? g.Key.Date.ToString() : g.Key.Date.AddHours(g.Key.Hour).ToString(), count = g.Count() })
+		List<CampaignClickStatPoint> stats;
+		if (groupby == "day") {
+			stats = clicksQuery
+				.GroupBy(f => new { Date = f.CreatedAt.Date, Hour = 0 })
+				.Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
+				.ToList()
+				.Select(s => new CampaignClickStatPoint { Position = s.Date.ToString(), ClickCount = s.Count })
 				.ToList();
+		} else if (groupby == "hour") {
+			stats = clicksQuery
+				.Where(t => t.CreatedAt > DateTime.Now.AddHours(-24))
+				.GroupBy(f => new { Date = f.CreatedAt.Date, Hour = f.CreatedAt.Hour })
+				.Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
+				.ToList()
+				.Select(s => new CampaignClickStatPoint { Position = s.Date.AddHours(s.Hour).ToString(), ClickCount = s.Count })
+				.ToList();
+		} else if (groupby == "month") {
+			stats = clicksQuery
+				.GroupBy(f => new { f.CreatedAt.Year, f.CreatedAt.Month })
+				.Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
+				.ToList()
+				.Select(s => new CampaignClickStatPoint { Position = new DateTime(s.Year, s.Month, 1).ToString(), ClickCount = s.Count })
+				.ToList();
+		} else {
+			throw new Exception("invalid groupby");
+		}
+
 		// return formatted object
 		return new GetCampaignClickStatsResponse
 		{
 			GroupedBy = groupby,
-			Stats = stats.Select(s => new CampaignClickStatPoint { Position = s.datetime, ClickCount = s.count }).ToList(),
+			Stats = stats,
 		};
 	}
 
@@ -515,23 +533,40 @@ public class Query
 
 		// get the clicks by campaign
 		var conversionsQuery = onTrackDBContext.TrackerClicks
-				.Where(e => e.Campaign.Id == campaign.Id && e.Conversion != null);
+				.Where(e => e.Campaign.Id == campaign.Id && e.Conversion != null && e.ConversionDate.HasValue);
 
-		// groupby sub-query based on which group we need
-		var subQuery =
-				groupby == "day" ? conversionsQuery.GroupBy(f => new { Date = f.ConversionDate.Value.Date, Hour = 0 }) :
-				groupby == "hour" ? conversionsQuery.Where(t => t.ConversionDate.Value > DateTime.Now.AddHours(-24)).GroupBy(f => new { Date = f.ConversionDate.Value.Date, Hour = f.ConversionDate.Value.Hour }) :
-				throw new Exception("invalid groupby");
-
-		// select the results
-		var stats = subQuery
-				.Select(g => new { datetime = groupby == "day" ? g.Key.Date.ToString() : g.Key.Date.AddHours(g.Key.Hour).ToString(), count = g.Count() })
+		List<CampaignConversionStatPoint> stats;
+		if (groupby == "day") {
+			stats = conversionsQuery
+				.GroupBy(f => new { Date = f.ConversionDate.Value.Date, Hour = 0 })
+				.Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
+				.ToList()
+				.Select(s => new CampaignConversionStatPoint { Position = s.Date.ToString(), ConversionCount = s.Count })
 				.ToList();
+		} else if (groupby == "hour") {
+			stats = conversionsQuery
+				.Where(t => t.ConversionDate.Value > DateTime.Now.AddHours(-24))
+				.GroupBy(f => new { Date = f.ConversionDate.Value.Date, Hour = f.ConversionDate.Value.Hour })
+				.Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
+				.ToList()
+				.Select(s => new CampaignConversionStatPoint { Position = s.Date.AddHours(s.Hour).ToString(), ConversionCount = s.Count })
+				.ToList();
+		} else if (groupby == "month") {
+			stats = conversionsQuery
+				.GroupBy(f => new { f.ConversionDate.Value.Year, f.ConversionDate.Value.Month })
+				.Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
+				.ToList()
+				.Select(s => new CampaignConversionStatPoint { Position = new DateTime(s.Year, s.Month, 1).ToString(), ConversionCount = s.Count })
+				.ToList();
+		} else {
+			throw new Exception("invalid groupby");
+		}
+
 		// return formatted object
 		return new GetCampaignConversionStatsResponse
 		{
 			GroupedBy = groupby,
-			Stats = stats.Select(s => new CampaignConversionStatPoint { Position = s.datetime, ConversionCount = s.count }).ToList(),
+			Stats = stats,
 		};
 	}
 
