@@ -1,1 +1,1 @@
-$env:ONTRACK_DATABASE_CONNECT_STRING="host=metrinome-us-east-1-instid.citzbss5x6lu.us-east-1.rds.amazonaws.com;Port=5432;Database=ontrack;Username=aura;Password=3MgzQXHGfJjzeiPG;Trust Server Certificate=false"
+$env:ONTRACK_DATABASE_CONNECT_STRING="host=ontrackdb-globaldb-us-east-1.cluster-citzbss5x6lu.us-east-1.rds.amazonaws.com;Port=5432;Database=ontrack;Username=aura;Password=3MgzQXHGfJjzeiPG;Trust Server Certificate=false"
