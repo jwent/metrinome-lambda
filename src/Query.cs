@@ -468,14 +468,27 @@ public class Query
 				.Select(combined => new TrackerClickData(combined.click, combined.extraCountry, combined.extraRegion, combined.extraCity))
 				.ToList();
 
-		var myClicksData= myClicks
-		.Select(combined => new TrackerClickData(combined.click, combined.extraCountry, combined.extraRegion, combined.extraCity)).ToList();
+		// Keep this projection as IQueryable so PostgreSQL performs the grouping and
+		// aggregation. Only the top ten aggregate rows are materialized in Lambda.
+		var myClicksData = myClicks.Select(combined => new
+		{
+			City = combined.extraCity.PropertyValue,
+			Region = combined.extraRegion.PropertyValue,
+			Conversion = combined.click.Conversion,
+		});
 
-		var topLocationsByClicks = myClicksData
-		.GroupBy(p => new { p.City, p.Region }).Select(m => new Location { City = m.Key.City, Region = m.Key.Region, ClickCount = m.Count() }).OrderByDescending(s => s.ClickCount).Take(10).ToList();
-		var conversionCountByCity = myClicksData.Where(t => t.Conversion == true).GroupBy(p => new { p.City, p.Region }).Select(m => new Location { City = m.Key.City, Region = m.Key.Region, ConversionCount = m.Count() }).OrderByDescending(s => s.ConversionCount).ToList();
-		var topLocations = topLocationsByClicks.GroupJoin(conversionCountByCity, click => click.City, conversion => conversion.City,
-	(click, locations) => new Location { City = click.City, Region = click.Region, ClickCount = click.ClickCount, ConversionCount = locations.FirstOrDefault() != null ? locations.FirstOrDefault().ConversionCount : 0 }).ToList();
+		var topLocations = myClicksData
+			.GroupBy(click => new { click.City, click.Region })
+			.Select(group => new Location
+			{
+				City = group.Key.City,
+				Region = group.Key.Region,
+				ClickCount = group.Count(),
+				ConversionCount = group.Count(click => click.Conversion == true),
+			})
+			.OrderByDescending(location => location.ClickCount)
+			.Take(10)
+			.ToList();
 	
 		return new TrackingCampaignDetails(campaignData, new Clicks(clicksList, count), new ChartDatas(topLocations));
 	}
@@ -496,7 +509,7 @@ public class Query
 				.GroupBy(f => new { Date = f.CreatedAt.Date, Hour = 0 })
 				.Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
 				.ToList()
-				.Select(s => new CampaignClickStatPoint { Position = s.Date.ToString(), ClickCount = s.Count })
+				.Select(s => new CampaignClickStatPoint { Position = s.Date.ToString("yyyy-MM-dd"), ClickCount = s.Count })
 				.ToList();
 		} else if (groupby == "hour") {
 			stats = clicksQuery
@@ -504,14 +517,14 @@ public class Query
 				.GroupBy(f => new { Date = f.CreatedAt.Date, Hour = f.CreatedAt.Hour })
 				.Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
 				.ToList()
-				.Select(s => new CampaignClickStatPoint { Position = s.Date.AddHours(s.Hour).ToString(), ClickCount = s.Count })
+				.Select(s => new CampaignClickStatPoint { Position = s.Date.AddHours(s.Hour).ToString("yyyy-MM-ddTHH:00:00"), ClickCount = s.Count })
 				.ToList();
 		} else if (groupby == "month") {
 			stats = clicksQuery
 				.GroupBy(f => new { f.CreatedAt.Year, f.CreatedAt.Month })
 				.Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
 				.ToList()
-				.Select(s => new CampaignClickStatPoint { Position = new DateTime(s.Year, s.Month, 1).ToString(), ClickCount = s.Count })
+				.Select(s => new CampaignClickStatPoint { Position = new DateTime(s.Year, s.Month, 1).ToString("yyyy-MM-dd"), ClickCount = s.Count })
 				.ToList();
 		} else {
 			throw new Exception("invalid groupby");
@@ -541,7 +554,7 @@ public class Query
 				.GroupBy(f => new { Date = f.ConversionDate.Value.Date, Hour = 0 })
 				.Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
 				.ToList()
-				.Select(s => new CampaignConversionStatPoint { Position = s.Date.ToString(), ConversionCount = s.Count })
+				.Select(s => new CampaignConversionStatPoint { Position = s.Date.ToString("yyyy-MM-dd"), ConversionCount = s.Count })
 				.ToList();
 		} else if (groupby == "hour") {
 			stats = conversionsQuery
@@ -549,14 +562,14 @@ public class Query
 				.GroupBy(f => new { Date = f.ConversionDate.Value.Date, Hour = f.ConversionDate.Value.Hour })
 				.Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
 				.ToList()
-				.Select(s => new CampaignConversionStatPoint { Position = s.Date.AddHours(s.Hour).ToString(), ConversionCount = s.Count })
+				.Select(s => new CampaignConversionStatPoint { Position = s.Date.AddHours(s.Hour).ToString("yyyy-MM-ddTHH:00:00"), ConversionCount = s.Count })
 				.ToList();
 		} else if (groupby == "month") {
 			stats = conversionsQuery
 				.GroupBy(f => new { f.ConversionDate.Value.Year, f.ConversionDate.Value.Month })
 				.Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
 				.ToList()
-				.Select(s => new CampaignConversionStatPoint { Position = new DateTime(s.Year, s.Month, 1).ToString(), ConversionCount = s.Count })
+				.Select(s => new CampaignConversionStatPoint { Position = new DateTime(s.Year, s.Month, 1).ToString("yyyy-MM-dd"), ConversionCount = s.Count })
 				.ToList();
 		} else {
 			throw new Exception("invalid groupby");
