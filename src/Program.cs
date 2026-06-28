@@ -82,12 +82,14 @@ var app = builder.Build();
 app.UseRouting();
 // only enable playground if we are testing locally
 if (Util.IsEnvironmentStage("LOCALTEST")) {
+#pragma warning disable CS0618
 	app.UseGraphQLPlayground(
 		"/",
 		new GraphQL.Server.Ui.Playground.PlaygroundOptions {
 			GraphQLEndPoint = "/graphql",
 			SubscriptionsEndPoint = "/graphql",
 		});
+#pragma warning restore CS0618
 }
 
 app.UseAuthentication();

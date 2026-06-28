@@ -75,7 +75,7 @@ public class TrackerController {
 
 		var trackerClick = await onTrackDBContext.TrackerClicks
 			.Include(c => c.ParentTracker)
-				.ThenInclude(t => t.Organization)
+				.ThenInclude(t => t!.Organization)
 					.ThenInclude(o => o.SubscriptionPlan)
 			.Include(c => c.Campaign)
 			.FirstOrDefaultAsync(c => c.Id == trackerClickId);

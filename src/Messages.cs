@@ -169,7 +169,7 @@ public class GetCampaignClickStatsResponse {
 	public List<CampaignClickStatPoint>? Stats { get; set; }
 }
 public class CampaignClickStatPoint {
-	public string Position { get; set; }
+	public string Position { get; set; } = string.Empty;
 	public int ClickCount { get; set; }
 }
 public class GetCampaignConversionStatsResponse
@@ -179,7 +179,7 @@ public class GetCampaignConversionStatsResponse
 }
 public class CampaignConversionStatPoint
 {
-    public string Position { get; set; }
+    public string Position { get; set; } = string.Empty;
     public int ConversionCount { get; set; }
 }
 public class AddUserResponse {

@@ -66,7 +66,7 @@ public class EmailController
             .Where(o => o.SubscriptionTrialStartDate.HasValue &&
                         o.SubscriptionPlan != null &&
                         o.SubscriptionPlan.PlanKey == SubscriptionPlanCatalog.TrialKey &&
-                        o.SubscriptionTrialStartDate.Value.AddDays(SubscriptionPlanCatalog.TrialDurationDays) == tomorrow)
+                        o.SubscriptionTrialStartDate!.Value.AddDays(SubscriptionPlanCatalog.TrialDurationDays) == tomorrow)
             .Join(dbContext.Users,
                   org => org.Id,
                   user => user.OrganizationId,
@@ -92,6 +92,9 @@ public class EmailController
 
         foreach (var item in expiring)
         {
+            if (!item.Org.SubscriptionTrialStartDate.HasValue)
+                continue;
+
             var email = item.User.Email;
             var expiry = item.Org.SubscriptionTrialStartDate.Value.AddDays(SubscriptionPlanCatalog.TrialDurationDays);
 

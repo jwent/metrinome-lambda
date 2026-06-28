@@ -9,33 +9,33 @@ using System.ComponentModel.DataAnnotations.Schema;
 public class User {
 
 	public Guid Id { get; set; }
-	public UserOrganization Organization { get; set; }
+	public UserOrganization Organization { get; set; } = null!;
     public Guid OrganizationId { get; set; }
-    public string Email { get; set; }
-	public string Password { get; set; }
+    public string Email { get; set; } = string.Empty;
+	public string Password { get; set; } = string.Empty;
 	public DateTime CreatedAt { get; set; }
-	public string ResetPasswordToken { get; set; }
-	public string UserState { get; set; }
+	public string ResetPasswordToken { get; set; } = string.Empty;
+	public string UserState { get; set; } = string.Empty;
     public string? MagicLink { get; set; }
 
     [InverseProperty("Parent")]
-	public List<UserExtraProperty> ExtraProperties { get; set; }
+	public List<UserExtraProperty> ExtraProperties { get; set; } = new();
 	[InverseProperty("OrganizationUser")]
-	public List<UserOrganizationalRoleAssociation> UserRoles { get; set; }
+	public List<UserOrganizationalRoleAssociation> UserRoles { get; set; } = new();
 }
 
 public class UserExtraProperty {
 	public Guid Id { get; set; }
-	public User Parent { get; set; }
-	public string PropertyKey { get; set; }
-	public string PropertyValue { get; set; }
+	public User Parent { get; set; } = null!;
+	public string PropertyKey { get; set; } = string.Empty;
+	public string PropertyValue { get; set; } = string.Empty;
 }
 
 public class UserOrganizationalRoleAssociation {
 	public Guid Id { get; set; }
-	public User OrganizationUser { get; set; }
-	public UserOrganization Organization { get; set; }
-	public string RoleName { get; set; }
+	public User OrganizationUser { get; set; } = null!;
+	public UserOrganization Organization { get; set; } = null!;
+	public string RoleName { get; set; } = string.Empty;
 }
 
 public class UserOrganization {
@@ -46,15 +46,15 @@ public class UserOrganization {
     public DateTime? SubscriptionTrialStartDate { get; set; }
 
     [InverseProperty("Organization")]
-	public List<User> Users { get; set; }
+	public List<User> Users { get; set; } = new();
 	[InverseProperty("Organization")]
-	public List<UserTracker> OrganizationalTrackers { get; set; }
+	public List<UserTracker> OrganizationalTrackers { get; set; } = new();
 }
 
 public class OrganizationalSubscriptionPlan {
 	public Guid Id { get; set; }
-	public string PlanKey { get; set; }
-	public string PlanName { get; set; }
+	public string PlanKey { get; set; } = string.Empty;
+	public string PlanName { get; set; } = string.Empty;
 
 	public int UsersLimitPerPlan { get; set; }
 	public int CampaignsLimitPerPlan { get; set; }
@@ -65,7 +65,7 @@ public class OrganizationalSubscriptionPlan {
 public class OrganizationCveContract {
 	public Guid Id { get; set; }
 	public Guid OrganizationId { get; set; }
-	public string TierName { get; set; }
+	public string TierName { get; set; } = string.Empty;
 	public int CommittedAnnualCVEs { get; set; }
 	public DateTime ContractStartDate { get; set; }
 	public DateTime ContractEndDate { get; set; }
@@ -80,9 +80,9 @@ public class OrganizationCveContract {
 public class OrganizationSite {
 	public Guid Id { get; set; }
 	public Guid OrganizationId { get; set; }
-	public string SiteName { get; set; }
-	public string Domain { get; set; }
-	public string TrackingId { get; set; }
+	public string SiteName { get; set; } = string.Empty;
+	public string Domain { get; set; } = string.Empty;
+	public string TrackingId { get; set; } = string.Empty;
 	public bool IsActive { get; set; }
 	public DateTime CreatedAt { get; set; }
 	public DateTime UpdatedAt { get; set; }
@@ -101,7 +101,7 @@ public class ConversionVerificationEvent {
 	public string? IdempotencyKey { get; set; }
 	public DateTime SubmittedAtUtc { get; set; }
 	public DateTime? OriginalEventTimestampUtc { get; set; }
-	public string Status { get; set; }
+	public string Status { get; set; } = string.Empty;
 	public bool CountsTowardCve { get; set; }
 	public DateTime? CountedAtUtc { get; set; }
 	public Guid? DuplicateOfEventId { get; set; }
@@ -114,16 +114,16 @@ public class ConversionVerificationEvent {
 
 public class UserTracker {
 	public Guid Id { get; set; }
-	public UserOrganization Organization { get; set; }
+	public UserOrganization Organization { get; set; } = null!;
 	public DateTime CreatedAt { get; set; }
 
 	[InverseProperty("ParentTracker")]
-	public List<TrackingCampaign> Campaigns { get; set; }
+	public List<TrackingCampaign> Campaigns { get; set; } = new();
 }
 
 public class TrackingCampaign {
 	public Guid Id { get; set; }
-	public UserTracker ParentTracker { get; set; }
+	public UserTracker ParentTracker { get; set; } = null!;
 
 	public DateTime CreatedAt { get; set; }
 	public int? Audience { get; set; }
@@ -139,16 +139,16 @@ public class TrackingCampaign {
 	public string? PrivacyPageURL { get; set; }
 
 	[InverseProperty("Campaign")]
-	public List<TrackerClick> Clicks { get; set; }
+	public List<TrackerClick> Clicks { get; set; } = new();
 	[InverseProperty("Parent")]
-	public List<TrackingCampaignExtraProperty> ExtraProperties { get; set; }
+	public List<TrackingCampaignExtraProperty> ExtraProperties { get; set; } = new();
 }
 
 public class TrackingCampaignExtraProperty {
 	public Guid Id { get; set; }
-	public TrackingCampaign Parent { get; set; }
-	public string PropertyKey { get; set; }
-	public string PropertyValue { get; set; }
+	public TrackingCampaign Parent { get; set; } = null!;
+	public string PropertyKey { get; set; } = string.Empty;
+	public string PropertyValue { get; set; } = string.Empty;
 }
 
 public class TrackerClick {
@@ -164,15 +164,15 @@ public class TrackerClick {
 	public bool? IsBotClick { get; set; }
 	public DateTime? ConversionDate { get; set; }
 	public bool? Conversion { get; set; }
-    public bool? IsDesktop { get; set; }
+	public bool? IsDesktop { get; set; }
 
 	[InverseProperty("ClickParent")]
-	public List<TrackerClickExtraProperty> ExtraProperties { get; set; }
+	public List<TrackerClickExtraProperty> ExtraProperties { get; set; } = new();
 }
 
 public class TrackerClickExtraProperty {
 	public Guid Id { get; set; }
-	public TrackerClick ClickParent { get; set; }
-	public string PropertyKey { get; set; }
-	public string PropertyValue { get; set; }
+	public TrackerClick ClickParent { get; set; } = null!;
+	public string PropertyKey { get; set; } = string.Empty;
+	public string PropertyValue { get; set; } = string.Empty;
 }

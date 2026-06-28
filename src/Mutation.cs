@@ -590,6 +590,14 @@ public class Mutation {
 
 		// update the property
 		var prop = user.ExtraProperties.FirstOrDefault(prop => prop.PropertyKey == "FullName");
+		if (prop == null) {
+			prop = new UserExtraProperty {
+				Id = Guid.NewGuid(),
+				Parent = user,
+				PropertyKey = "FullName",
+			};
+			onTrackDBContext.UserExtraProperties.Add(prop);
+		}
 		prop.PropertyValue = fullname;
 		// save the property
 		onTrackDBContext.SaveChanges();
@@ -888,7 +896,7 @@ public class Mutation {
                         { "planKey", selectedPlan.PlanKey },
                         { "userId", user.Id.ToString() }
                     },
-                    Expand = new List<string> { "latest_invoice.payment_intent" },
+                    Expand = new List<string> { "latest_invoice.confirmation_secret" },
                 });
             }
             else
@@ -911,7 +919,7 @@ public class Mutation {
                         { "planKey", selectedPlan.PlanKey },
                         { "userId", user.Id.ToString() }
                     },
-                    Expand = new List<string> { "latest_invoice.payment_intent" },
+                    Expand = new List<string> { "latest_invoice.confirmation_secret" },
                 });
             }
 
@@ -921,19 +929,18 @@ public class Mutation {
             onTrackDBContext.SaveChanges();
 
             var latestInvoice = subscription.LatestInvoice as Invoice;
-            var paymentIntent = latestInvoice?.PaymentIntent;
+            var confirmationSecret = latestInvoice?.ConfirmationSecret;
             return new CreateSubscriptionResponse
             {
                 Success = true,
                 AlreadySubscribed = wasAlreadySubscribed && existingSubscription != null,
-                ClientSecret = paymentIntent?.ClientSecret,
+                ClientSecret = confirmationSecret?.ClientSecret,
                 SubscriptionId = subscription.Id,
                 CustomerId = customer.Id,
                 PublishableKey = GetStripePublishableKey(),
                 PlanKey = selectedPlan.PlanKey,
                 PriceId = price,
-                RequiresAction = paymentIntent?.Status == "requires_action" ||
-                                 paymentIntent?.Status == "requires_payment_method",
+                RequiresAction = confirmationSecret?.ClientSecret != null,
             };
         }
         catch (StripeException ex)
@@ -1401,7 +1408,7 @@ public class Mutation {
 		Console.WriteLine($"[+] searching campaign by campaignId: {campaignId}");
 		var campaign = TrackerController.GetCampaignById(onTrackDBContext, userTracker.Id, Guid.Parse(campaignId));
 
-		var clicks = onTrackDBContext.TrackerClicks.Where(t=>t.Campaign.Id==campaign.Id).ToList();
+		var clicks = onTrackDBContext.TrackerClicks.Where(t => t.Campaign != null && t.Campaign.Id == campaign.Id).ToList();
 		foreach(var click in clicks){
 			var trackerClickExtraProperties = onTrackDBContext.TrackerClickExtraProperties.Where(t=>t.ClickParent.Id==click.Id).ToList();
 			Console.WriteLine($"[+] remove click extras: {click.Id}");

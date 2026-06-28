@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using GraphQL;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -413,6 +414,7 @@ public class TrackingSnippetTests
             Environment.SetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL", "https://tracking.test");
             Environment.SetEnvironmentVariable("ONTRACK_SITE_URL", "https://app.test/");
             Environment.SetEnvironmentVariable("ONTRACK_JWT_SIGNING_KEY", "test-signing-key-1234567890");
+            LoadLaunchProfileEnvironmentVariables();
 
             var connectionString = Environment.GetEnvironmentVariable("ONTRACK_DATABASE_CONNECT_STRING");
             if (string.IsNullOrWhiteSpace(connectionString))
@@ -439,10 +441,8 @@ public class TrackingSnippetTests
                         .ThenInclude(o => o.SubscriptionPlan)
                     .Include(u => u.ExtraProperties)
                     .Include(u => u.UserRoles)
-                    .FirstOrDefault(u => u.Email == preferredEmail);
-
-                if (user == null)
-                    throw new InvalidOperationException($"Expected existing test user '{preferredEmail}' was not found.");
+                    .FirstOrDefault(u => u.Email == preferredEmail)
+                    ?? throw new InvalidOperationException($"Expected existing test user '{preferredEmail}' was not found.");
 
                 organization = user.Organization;
             }
@@ -540,6 +540,37 @@ public class TrackingSnippetTests
             }
 
             return new TrackingTestHarness(db, user, organization, tracker, campaign, contract);
+        }
+
+        private static void LoadLaunchProfileEnvironmentVariables()
+        {
+            var launchSettingsPath = Path.GetFullPath(Path.Combine(
+                AppContext.BaseDirectory,
+                "..",
+                "..",
+                "..",
+                "..",
+                "..",
+                "Properties",
+                "launchSettings.json"));
+
+            if (!File.Exists(launchSettingsPath))
+                return;
+
+            using var document = JsonDocument.Parse(File.ReadAllText(launchSettingsPath));
+            if (!document.RootElement.TryGetProperty("profiles", out var profiles) ||
+                !profiles.TryGetProperty("OnTrackGraphQLServer", out var profile) ||
+                !profile.TryGetProperty("environmentVariables", out var environmentVariables))
+                return;
+
+            foreach (var environmentVariable in environmentVariables.EnumerateObject())
+            {
+                if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(environmentVariable.Name)))
+                    continue;
+
+                if (environmentVariable.Value.ValueKind == JsonValueKind.String)
+                    Environment.SetEnvironmentVariable(environmentVariable.Name, environmentVariable.Value.GetString());
+            }
         }
 
         public void Dispose()

@@ -131,7 +131,8 @@ public class UserController {
 		if (!organization.SubscriptionTrialStartDate.HasValue)
 			return "free";
 
-		var expiresAtUtc = organization.SubscriptionTrialStartDate.Value.AddDays(SubscriptionPlanCatalog.TrialDurationDays);
+		var trialStartDate = organization.SubscriptionTrialStartDate.Value;
+		var expiresAtUtc = trialStartDate.AddDays(SubscriptionPlanCatalog.TrialDurationDays);
 		return expiresAtUtc >= asOfUtc ? "trialing" : "trial_expired";
 	}
 

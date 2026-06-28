@@ -6,6 +6,11 @@ using System.Security.Claims;
 
 public class Query
 {
+	private static float ParseCampaignConversionValue(string? conversionValue)
+	{
+		return float.TryParse(conversionValue, out var parsedValue) ? parsedValue : 0;
+	}
+
 	public static string DatabaseInfo([FromServices] OnTrackDBContext dbContext)
 	{
 		// Returns current database name from EF Core
@@ -381,7 +386,7 @@ public class Query
 			throw new Exception("campaign not found!");
 
 		var myClicks = onTrackDBContext.TrackerClicks
-				.Where(e => e.Campaign.Id == campaignGuid)
+				.Where(e => e.Campaign != null && e.Campaign.Id == campaignGuid)
 				.Join(onTrackDBContext.TrackerClickExtraProperties,
 					click => new { click.Id, PropertyKey = "ip_country" },
 					extra => new { extra.ClickParent.Id, extra.PropertyKey },
@@ -436,11 +441,11 @@ public class Query
 			throw new Exception("campaign not found!");
 
 		var campaignData = new TrackingCampaignData(existingCampaign.campaign,
-					onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.campaign.Id).Count(),
-					onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.campaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
-					onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.campaign.Id && c.IsBotClick == true).Count(),
-					onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.campaign.Id && c.Conversion == true).Count(),
-					onTrackDBContext.TrackerClicks.Where(c => c.Campaign.Id == existingCampaign.campaign.Id && c.Conversion == true && c.IsDesktop == true).Count(),
+					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id).Count(),
+					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
+					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.IsBotClick == true).Count(),
+					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.Conversion == true).Count(),
+					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.Conversion == true && c.IsDesktop == true).Count(),
 					existingCampaign.extraCampaignType);
 
 		var myClicks = onTrackDBContext.TrackerClicks
@@ -501,7 +506,7 @@ public class Query
 
 		// get the clicks by campaign
 		var clicksQuery = onTrackDBContext.TrackerClicks
-				.Where(e => e.Campaign.Id == campaign.Id);
+				.Where(e => e.Campaign != null && e.Campaign.Id == campaign.Id);
 
 		List<CampaignClickStatPoint> stats;
 		if (groupby == "day") {
@@ -546,27 +551,27 @@ public class Query
 
 		// get the clicks by campaign
 		var conversionsQuery = onTrackDBContext.TrackerClicks
-				.Where(e => e.Campaign.Id == campaign.Id && e.Conversion != null && e.ConversionDate.HasValue);
+				.Where(e => e.Campaign != null && e.Campaign.Id == campaign.Id && e.Conversion != null && e.ConversionDate.HasValue);
 
 		List<CampaignConversionStatPoint> stats;
 		if (groupby == "day") {
 			stats = conversionsQuery
-				.GroupBy(f => new { Date = f.ConversionDate.Value.Date, Hour = 0 })
+				.GroupBy(f => new { Date = f.ConversionDate!.Value.Date, Hour = 0 })
 				.Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
 				.ToList()
 				.Select(s => new CampaignConversionStatPoint { Position = s.Date.ToString("yyyy-MM-dd"), ConversionCount = s.Count })
 				.ToList();
 		} else if (groupby == "hour") {
 			stats = conversionsQuery
-				.Where(t => t.ConversionDate.Value > DateTime.Now.AddHours(-24))
-				.GroupBy(f => new { Date = f.ConversionDate.Value.Date, Hour = f.ConversionDate.Value.Hour })
+				.Where(t => t.ConversionDate!.Value > DateTime.Now.AddHours(-24))
+				.GroupBy(f => new { Date = f.ConversionDate!.Value.Date, Hour = f.ConversionDate!.Value.Hour })
 				.Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
 				.ToList()
 				.Select(s => new CampaignConversionStatPoint { Position = s.Date.AddHours(s.Hour).ToString("yyyy-MM-ddTHH:00:00"), ConversionCount = s.Count })
 				.ToList();
 		} else if (groupby == "month") {
 			stats = conversionsQuery
-				.GroupBy(f => new { f.ConversionDate.Value.Year, f.ConversionDate.Value.Month })
+				.GroupBy(f => new { f.ConversionDate!.Value.Year, f.ConversionDate!.Value.Month })
 				.Select(g => new { g.Key.Year, g.Key.Month, Count = g.Count() })
 				.ToList()
 				.Select(s => new CampaignConversionStatPoint { Position = new DateTime(s.Year, s.Month, 1).ToString("yyyy-MM-dd"), ConversionCount = s.Count })
@@ -603,8 +608,8 @@ public class Query
 
 		// select where we want to get stuff from
 		var query =
-				propertytype == "click" ? onTrackDBContext.TrackerClicks.Where(c => c.ParentTracker.Id == userTracker.Id) :
-				propertytype == "conversion" ? onTrackDBContext.TrackerClicks.Where(c => c.ParentTracker.Id == userTracker.Id && c.Conversion != null) :
+				propertytype == "click" ? onTrackDBContext.TrackerClicks.Where(c => c.ParentTracker != null && c.ParentTracker.Id == userTracker.Id) :
+				propertytype == "conversion" ? onTrackDBContext.TrackerClicks.Where(c => c.ParentTracker != null && c.ParentTracker.Id == userTracker.Id && c.Conversion != null) :
 				throw new Exception("invalid propertytype argument:" + propertytype);
 
 		// group our stuff by the group value
@@ -638,26 +643,26 @@ public class Query
 					.Select(g => new StatPoint { Position = g.Key, Count = g.Count() }) :
 				groupby == "ad_type" ? query
 					.Join(onTrackDBContext.TrackingCampaignExtraProperties,
-						click => new { click.Campaign.Id, PropertyKey = "CampaignType" },
+						click => new { click.Campaign!.Id, PropertyKey = "CampaignType" },
 						extra => new { extra.Parent.Id, extra.PropertyKey },
 						(click, extraCampaignType) => new { click, extraCampaignType }
 					).GroupBy(c => c.extraCampaignType.PropertyValue)
 					.Select(g => new StatPoint { Position = g.Key, Count = g.Count() }) :
 				groupby == "platform" ? query
-					.GroupBy(c => c.Campaign.Platform)
+					.GroupBy(c => c.Campaign!.Platform)
 					.Select(g => new StatPoint { Position = g.Key, Count = g.Count() }) :
 				// since clicks and conversions have different date properties, we have to get more specific
 				groupby == "day_of_the_week" && propertytype == "click" ? query
 					.GroupBy(c => c.CreatedAt.DayOfWeek)
 					.Select(g => new StatPoint { Position = g.Key.ToString(), Count = g.Count() }) :
 				groupby == "day_of_the_week" && propertytype == "conversion" ? query
-					.GroupBy(c => ((DateTime)c.ConversionDate).DayOfWeek)
+					.GroupBy(c => c.ConversionDate!.Value.DayOfWeek)
 					.Select(g => new StatPoint { Position = g.Key.ToString(), Count = g.Count() }) :
 				groupby == "hour_of_the_day" && propertytype == "click" ? query
 					.GroupBy(c => c.CreatedAt.Hour)
 					.Select(g => new StatPoint { Position = g.Key.ToString(), Count = g.Count() }) :
 				groupby == "hour_of_the_day" && propertytype == "conversion" ? query
-					.GroupBy(c => ((DateTime)c.ConversionDate).Hour)
+					.GroupBy(c => c.ConversionDate!.Value.Hour)
 					.Select(g => new StatPoint { Position = g.Key.ToString(), Count = g.Count() }) :
 				throw new Exception("invalid groupby argument:" + groupby);
 
@@ -696,8 +701,8 @@ public class Query
 		// select where we want to get stuff from
 		var query =
 				propertytype == "roi" ? onTrackDBContext.TrackerClicks
-					.Where(c => c.ParentTracker.Id == userTracker.Id && c.Conversion != null)
-					.GroupBy(c => c.Campaign.Id)
+					.Where(c => c.ParentTracker != null && c.ParentTracker.Id == userTracker.Id && c.Campaign != null && c.Conversion != null)
+					.GroupBy(c => c.Campaign!.Id)
 					.Select(g => new { Campaign=onTrackDBContext.TrackingCampaigns.First(t => t.Id == g.Key), Count=g.Count() })
 					.ToList() :
 				throw new Exception("invalid propertytype argument:" + propertytype);
@@ -705,11 +710,11 @@ public class Query
 		// group our stuff by the group value
 		var results =
 				groupby == "roi" ? query
-					.Select(g => new StatPoint { Position=g.Campaign.CampaignName, Count=(int)(g.Count * float.Parse(g.Campaign.ConversionValue)) } )
+					.Select(g => new StatPoint { Position=g.Campaign.CampaignName, Count=(int)(g.Count * ParseCampaignConversionValue(g.Campaign.ConversionValue)) } )
 					.ToList() :
 				groupby == "ad_type" ? query
 					.GroupBy(c => onTrackDBContext.TrackingCampaignExtraProperties.First(p => p.Parent == c.Campaign && p.PropertyKey == "CampaignType").PropertyValue)
-					.Select(g2 => new StatPoint { Position=g2.Key, Count=g2.ToList().Sum(g => (int)(g.Count * float.Parse(g.Campaign.ConversionValue))) } )
+					.Select(g2 => new StatPoint { Position=g2.Key, Count=g2.ToList().Sum(g => (int)(g.Count * ParseCampaignConversionValue(g.Campaign.ConversionValue))) } )
 					.ToList() :
 				throw new Exception("invalid groupby argument:" + groupby);
 
