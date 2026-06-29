@@ -38,7 +38,7 @@ public class TrackingCampaignSubmission {
 
 
 public class TrackingCampaignData {
-    public TrackingCampaignData(TrackingCampaign campaign, int Clicks, int UniqueClicks, int BotClicks, int Conversions, int DesktopClicks, TrackingCampaignExtraProperty ExtraCampaignType, int? Count = null)
+    public TrackingCampaignData(TrackingCampaign campaign, int Clicks, int UniqueClicks, int BotClicks, int Conversions, int DuplicateConversions, int DesktopClicks, TrackingCampaignExtraProperty ExtraCampaignType, int? Count = null)
     {
         this.Id = campaign.Id;
         this.CreatedAt = campaign.CreatedAt;
@@ -54,6 +54,7 @@ public class TrackingCampaignData {
         this.UniqueClicks = UniqueClicks;
         this.BotClicks = BotClicks;
         this.Conversions = Conversions;
+        this.DuplicateConversions = DuplicateConversions;
         this.DesktopClicks = DesktopClicks;
         this.Count = Count;
         this.CampaignType = ExtraCampaignType.PropertyValue;
@@ -76,6 +77,7 @@ public class TrackingCampaignData {
 	public int? UniqueClicks { get; set; }
 	public int? BotClicks { get; set; }
 	public int? Conversions { get; set; }
+	public int? DuplicateConversions { get; set; }
 	public int? DesktopClicks { get; set; }
     public int? Count { get; set; }
     public string? CampaignType { get; set; }

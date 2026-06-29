@@ -11,6 +11,18 @@ public class Query
 		return float.TryParse(conversionValue, out var parsedValue) ? parsedValue : 0;
 	}
 
+	private static int CountDuplicateConversions(OnTrackDBContext onTrackDBContext, Guid campaignId)
+	{
+		try {
+			return onTrackDBContext.ConversionVerificationEvents.Count(e =>
+				e.TrackingCampaignId == campaignId &&
+				e.Status == "Duplicate");
+		}
+		catch (PostgresException ex) when (ex.SqlState == "42P01") {
+			return 0;
+		}
+	}
+
 	public static string DatabaseInfo([FromServices] OnTrackDBContext dbContext)
 	{
 		// Returns current database name from EF Core
@@ -368,6 +380,7 @@ public class Query
 				onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
 				onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id && c.IsBotClick == true).Count(),
 				onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id && c.Conversion == true).Count(),
+				CountDuplicateConversions(onTrackDBContext, e.campaign.Id),
 				onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id && c.Conversion == true && c.IsDesktop == true).Count(),
 				e.extraCampaignType))
 		.ToList();
@@ -445,6 +458,7 @@ public class Query
 					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
 					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.IsBotClick == true).Count(),
 					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.Conversion == true).Count(),
+					CountDuplicateConversions(onTrackDBContext, existingCampaign.campaign.Id),
 					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.Conversion == true && c.IsDesktop == true).Count(),
 					existingCampaign.extraCampaignType);
 
