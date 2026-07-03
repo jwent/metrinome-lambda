@@ -516,7 +516,13 @@ public class Query
 	public static GetCampaignClickStatsResponse myCampaignClickStats(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, string? groupby = "day") {
 		var userId = UserController.GetCurrentUserId(context);
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
-		var campaign = TrackerController.GetCampaignById(onTrackDBContext, userTracker.Id, Guid.Parse(campaignId));
+		if (!Guid.TryParse(campaignId, out var parsedCampaignId))
+			return new GetCampaignClickStatsResponse { GroupedBy = groupby, Stats = new List<CampaignClickStatPoint>() };
+
+		var campaign = onTrackDBContext.TrackingCampaigns
+			.FirstOrDefault(e => e.Id == parsedCampaignId && e.ParentTracker.Id == userTracker.Id);
+		if (campaign == null)
+			return new GetCampaignClickStatsResponse { GroupedBy = groupby, Stats = new List<CampaignClickStatPoint>() };
 
 		// get the clicks by campaign
 		var clicksQuery = onTrackDBContext.TrackerClicks
@@ -561,7 +567,13 @@ public class Query
 	public static GetCampaignConversionStatsResponse myCampaignConversionStats(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string campaignId, string? groupby = "day") {
 		var userId = UserController.GetCurrentUserId(context);
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
-		var campaign = TrackerController.GetCampaignById(onTrackDBContext, userTracker.Id, Guid.Parse(campaignId));
+		if (!Guid.TryParse(campaignId, out var parsedCampaignId))
+			return new GetCampaignConversionStatsResponse { GroupedBy = groupby, Stats = new List<CampaignConversionStatPoint>() };
+
+		var campaign = onTrackDBContext.TrackingCampaigns
+			.FirstOrDefault(e => e.Id == parsedCampaignId && e.ParentTracker.Id == userTracker.Id);
+		if (campaign == null)
+			return new GetCampaignConversionStatsResponse { GroupedBy = groupby, Stats = new List<CampaignConversionStatPoint>() };
 
 		// get the clicks by campaign
 		var conversionsQuery = onTrackDBContext.TrackerClicks
