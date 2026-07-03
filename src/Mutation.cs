@@ -1057,7 +1057,11 @@ public class Mutation {
         var baseUrl = Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")
             ?? throw new InvalidOperationException("ONTRACK_SITE_URL is not configured");
 
-        var magicLinkUrl = Util.CreateMagicLinkUrl(email, newUser.MagicLink, baseUrl);
+        string? magicLinkUrl = null;
+        if (canUseMagicLink)
+        {
+            magicLinkUrl = Util.CreateMagicLinkUrl(email, newUser.MagicLink, baseUrl);
+        }
 
         var newOrganization = new UserOrganization
         {
@@ -1118,18 +1122,8 @@ public class Mutation {
                 $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}VerifyMainUserEmail?resetkey={randomResetToken}'>this link</a> to verify your account and use the platform.");
         }
         else {
-            var normalizedEmail = email.Trim().ToLowerInvariant();
-            var payload = $"{normalizedEmail}:{newUser.MagicLink}";
-
-            var hash = Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(payload))
-            );
-
-            // URL-encode email for safety
-            var encodedEmail = Uri.EscapeDataString(normalizedEmail);
-
             await EmailController.SendEmail(email, "Your Metrinome Analytics magic link",
-                $"Please follow <a href='{Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")}invite?email={encodedEmail}&token=#{hash}'>this link</a> to log in to your account and use the platform.");
+                $"Please follow <a href='{magicLinkUrl}'>this link</a> to log in to your account and use the platform.");
         }
 
         // return is pointless
