@@ -13,9 +13,18 @@ using System.Linq;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 
 public class Mutation {
+    private static void LogCloudWatchEvent(string eventName, object details) {
+        Console.WriteLine(JsonSerializer.Serialize(new {
+            eventName,
+            timestampUtc = DateTime.UtcNow,
+            details
+        }));
+    }
+
     //[Authorize(Policy = "AdminPolicy")] // optional; adjust to CustomerPolicy if you prefer
     public static async Task<SuccessResponse> runTrialExpirationTest([FromServices] OnTrackDBContext onTrackDBContext)
     {
@@ -64,7 +73,7 @@ public class Mutation {
         var ses = new AmazonSimpleEmailServiceClient(Amazon.RegionEndpoint.USEast1);
         var request = new SendEmailRequest
         {
-            Source = "noreply@noreply@metrinome.io",
+            Source = "noreply@metrinome.io",
             Destination = new Destination { ToAddresses = new List<string> { to } },
             Message = new Message
             {
@@ -864,46 +873,155 @@ public class Mutation {
 
 	[Authorize(Policy = "CustomerPolicy")]
 	public static Guid? createCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, TrackingCampaignSubmission campaign) {
-		var userId = UserController.GetCurrentUserId(context);
+		var operationId = Guid.NewGuid();
+		LogCloudWatchEvent("createCampaign.started", new {
+			operationId,
+			hasCampaign = campaign != null
+		});
 
-		Console.WriteLine($"[+] searching user trackers by userId: {userId}");
-		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
+		if (campaign == null) {
+			LogCloudWatchEvent("createCampaign.validationFailed", new {
+				operationId,
+				missingFields = new[] { "campaign" }
+			});
+			throw new ExecutionError("Campaign submission is required.");
+		}
 
-		Console.WriteLine($"[+] creating the new campaign: {campaign.CampaignName}");
-		var newCampaign = new TrackingCampaign();
-		newCampaign.Id = Guid.NewGuid();
-		newCampaign.ParentTracker = userTracker;
-		newCampaign.CreatedAt = DateTime.Now;
-		newCampaign.Audience = new Random().Next(3, 100);
+		var missingFields = new List<string>();
+		if (string.IsNullOrWhiteSpace(campaign.Platform)) missingFields.Add("platform");
+		if (string.IsNullOrWhiteSpace(campaign.CampaignName)) missingFields.Add("campaignName");
+		if (string.IsNullOrWhiteSpace(campaign.CampaignBudget)) missingFields.Add("campaignBudget");
+		if (string.IsNullOrWhiteSpace(campaign.ConversionValue)) missingFields.Add("conversionValue");
+		if (string.IsNullOrWhiteSpace(campaign.WebsiteDomain)) missingFields.Add("websiteDomain");
+		if (string.IsNullOrWhiteSpace(campaign.LandingPageURL)) missingFields.Add("landingPageURL");
 
-		newCampaign.Platform = campaign.Platform ?? newCampaign.Platform;
-		newCampaign.CampaignName = campaign.CampaignName ?? newCampaign.CampaignName;
-		newCampaign.CampaignBudget = campaign.CampaignBudget ?? newCampaign.CampaignBudget;
-		newCampaign.ConversionValue = campaign.ConversionValue ?? newCampaign.ConversionValue;
-		newCampaign.WebsiteDomain = campaign.WebsiteDomain ?? newCampaign.WebsiteDomain;
-		newCampaign.CartPageURL = campaign.CartPageURL ?? newCampaign.CartPageURL;
-		newCampaign.LandingPageURL = campaign.LandingPageURL ?? newCampaign.LandingPageURL;
-		newCampaign.PrivacyPageURL = campaign.PrivacyPageURL ?? newCampaign.PrivacyPageURL;
+		if (missingFields.Count > 0) {
+			LogCloudWatchEvent("createCampaign.validationFailed", new {
+				operationId,
+				missingFields,
+				hasCartPageURL = !string.IsNullOrWhiteSpace(campaign.CartPageURL),
+				hasPrivacyPageURL = !string.IsNullOrWhiteSpace(campaign.PrivacyPageURL)
+			});
+			throw new ExecutionError("Cannot create campaign. Missing required field(s): " + string.Join(", ", missingFields) + ".");
+		}
 
-		onTrackDBContext.TrackingCampaigns.Add(newCampaign);
-		onTrackDBContext.SaveChanges();
+		Guid userId;
+		try {
+			userId = UserController.GetCurrentUserId(context);
+		}
+		catch (Exception ex) {
+			LogCloudWatchEvent("createCampaign.currentUserFailed", new {
+				operationId,
+				exceptionType = ex.GetType().FullName,
+				ex.Message,
+				ex.StackTrace
+			});
+			throw new ExecutionError("Cannot create campaign. Current user could not be resolved.");
+		}
 
-		var CampaignTypeProperty = new TrackingCampaignExtraProperty {
+		LogCloudWatchEvent("createCampaign.lookupTracker.started", new {
+			operationId,
+			userId
+		});
+
+		UserTracker userTracker;
+		try {
+			userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
+		}
+		catch (Exception ex) {
+			LogCloudWatchEvent("createCampaign.lookupTracker.failed", new {
+				operationId,
+				userId,
+				exceptionType = ex.GetType().FullName,
+				ex.Message,
+				ex.StackTrace
+			});
+			throw new ExecutionError("Cannot create campaign. No tracker exists for the current user.");
+		}
+
+		var newCampaign = new TrackingCampaign {
 			Id = Guid.NewGuid(),
-			Parent = newCampaign,
-			PropertyKey = "CampaignType",
-			PropertyValue = campaign.CampaignType ?? "Google Ads Search Campaign",
-		};
-		var PrimaryCampaignObjectiveProperty = new TrackingCampaignExtraProperty {
-			Id = Guid.NewGuid(),
-			Parent = newCampaign,
-			PropertyKey = "PrimaryCampaignObjective",
-			PropertyValue = campaign.PrimaryCampaignObjective ?? "Sales",
+			ParentTracker = userTracker,
+			CreatedAt = DateTime.Now,
+			Audience = new Random().Next(3, 100),
+			Platform = campaign.Platform,
+			CampaignName = campaign.CampaignName,
+			CampaignBudget = campaign.CampaignBudget,
+			ConversionValue = campaign.ConversionValue,
+			WebsiteDomain = campaign.WebsiteDomain,
+			CartPageURL = campaign.CartPageURL,
+			LandingPageURL = campaign.LandingPageURL,
+			PrivacyPageURL = campaign.PrivacyPageURL
 		};
 
-		onTrackDBContext.TrackingCampaignExtraProperties.Add(CampaignTypeProperty);
-		onTrackDBContext.TrackingCampaignExtraProperties.Add(PrimaryCampaignObjectiveProperty);
-		onTrackDBContext.SaveChanges();
+		LogCloudWatchEvent("createCampaign.persist.started", new {
+			operationId,
+			userId,
+			trackerId = userTracker.Id,
+			campaignId = newCampaign.Id,
+			platform = campaign.Platform,
+			hasCampaignType = !string.IsNullOrWhiteSpace(campaign.CampaignType),
+			hasPrimaryCampaignObjective = !string.IsNullOrWhiteSpace(campaign.PrimaryCampaignObjective)
+		});
+
+		try {
+			using var transaction = onTrackDBContext.Database.BeginTransaction();
+
+			onTrackDBContext.TrackingCampaigns.Add(newCampaign);
+			onTrackDBContext.SaveChanges();
+
+			var CampaignTypeProperty = new TrackingCampaignExtraProperty {
+				Id = Guid.NewGuid(),
+				Parent = newCampaign,
+				PropertyKey = "CampaignType",
+				PropertyValue = campaign.CampaignType ?? "Google Ads Search Campaign",
+			};
+			var PrimaryCampaignObjectiveProperty = new TrackingCampaignExtraProperty {
+				Id = Guid.NewGuid(),
+				Parent = newCampaign,
+				PropertyKey = "PrimaryCampaignObjective",
+				PropertyValue = campaign.PrimaryCampaignObjective ?? "Sales",
+			};
+
+			onTrackDBContext.TrackingCampaignExtraProperties.Add(CampaignTypeProperty);
+			onTrackDBContext.TrackingCampaignExtraProperties.Add(PrimaryCampaignObjectiveProperty);
+			onTrackDBContext.SaveChanges();
+
+			transaction.Commit();
+		}
+		catch (DbUpdateException ex) {
+			LogCloudWatchEvent("createCampaign.persist.failed", new {
+				operationId,
+				userId,
+				trackerId = userTracker.Id,
+				campaignId = newCampaign.Id,
+				exceptionType = ex.GetType().FullName,
+				ex.Message,
+				innerExceptionType = ex.InnerException?.GetType().FullName,
+				innerMessage = ex.InnerException?.Message,
+				ex.StackTrace
+			});
+			throw new ExecutionError("Cannot create campaign. The campaign could not be saved.");
+		}
+		catch (Exception ex) {
+			LogCloudWatchEvent("createCampaign.unexpectedFailed", new {
+				operationId,
+				userId,
+				trackerId = userTracker.Id,
+				campaignId = newCampaign.Id,
+				exceptionType = ex.GetType().FullName,
+				ex.Message,
+				ex.StackTrace
+			});
+			throw new ExecutionError("Cannot create campaign. An unexpected error occurred.");
+		}
+
+		LogCloudWatchEvent("createCampaign.succeeded", new {
+			operationId,
+			userId,
+			trackerId = userTracker.Id,
+			campaignId = newCampaign.Id
+		});
 
 		return newCampaign.Id;
 	}
