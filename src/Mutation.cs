@@ -486,7 +486,7 @@ public class Mutation {
     }
 
 
-	[Authorize(Policy = "CustomerPolicy")]
+    [Authorize(Policy = "CustomerPolicy")]
 	public static SuccessOrErrorResponse updateUserFullName(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string fullname) {
 		var userId = UserController.GetCurrentUserId(context);
 		var user = onTrackDBContext.Users
@@ -862,24 +862,12 @@ public class Mutation {
         return new LoginUserResponse { BearerToken = Util.SignAuthToken(user) };
     }
 
-    [Authorize(Policy = "CustomerPolicy")]
+	[Authorize(Policy = "CustomerPolicy")]
 	public static Guid? createCampaign(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, TrackingCampaignSubmission campaign) {
 		var userId = UserController.GetCurrentUserId(context);
-		var user = onTrackDBContext.Users
-			.Include(u => u.Organization.OrganizationalTrackers)
-			.ThenInclude(t => t.Campaigns)
-			.Include(u => u.Organization.SubscriptionPlan)
-			.First(u => u.Id == userId);
 
 		Console.WriteLine($"[+] searching user trackers by userId: {userId}");
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
-
-		var subscriptionPlan = UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, user.Organization);
-		// check if the organization subscription plan allows for this additional campaign
-		if (user.Organization.OrganizationalTrackers[0].Campaigns.Count >= subscriptionPlan.CampaignsLimitPerPlan) {
-			Console.WriteLine($"[+] organization has reached campaigns limit! denied!");
-			return null;
-		}
 
 		Console.WriteLine($"[+] creating the new campaign: {campaign.CampaignName}");
 		var newCampaign = new TrackingCampaign();
