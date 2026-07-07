@@ -174,7 +174,7 @@ public class Query
 
 			var campaignCount = onTrackDBContext.TrackingCampaigns.Count(c => c.ParentTracker.Organization.Id == organizationId);
 			var countedCves = onTrackDBContext.ConversionVerificationEvents.Count(cve => cve.OrganizationId == organizationId && cve.CountsTowardCve);
-			var totalCves = countedCves;
+			var totalCves = onTrackDBContext.ConversionVerificationEvents.Count(cve => cve.OrganizationId == organizationId);
 			var verifiedCves = onTrackDBContext.ConversionVerificationEvents.Count(cve =>
 				cve.OrganizationId == organizationId &&
 				cve.Status == "Verified");
