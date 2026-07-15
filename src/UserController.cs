@@ -58,7 +58,6 @@ public class UserController {
 		var userId = GetCurrentUserId(context);
 		var organization = onTrackDBContext.Users
 				.Where(u => u.Id == userId)
-				.Include(u => u.Organization.SubscriptionPlan)
 				.Include(u => u.Organization.Users)
 				.ThenInclude(u => u.ExtraProperties)
 				.Include(u => u.Organization.Users)
@@ -79,66 +78,31 @@ public class UserController {
 		return GetUserOrganizationalRoles(onTrackDBContext, userId, organizationId).SelectMany(role => rolePolicies[role]).Contains(action);
 	}
 
-	public static OrganizationalSubscriptionPlan GetSubscriptionPlanByKey(OnTrackDBContext onTrackDBContext, String plankey) {
-		var existingPlan = onTrackDBContext.OrganizationalSubscriptionPlans.FirstOrDefault(plan => plan.PlanKey == plankey);
-		if (existingPlan != null)
-			return existingPlan;
-
-		var planDetails = SubscriptionPlanCatalog.GetPlanDetails(plankey);
-		var createdPlan = new OrganizationalSubscriptionPlan {
-			Id = planDetails.Id,
-			PlanKey = planDetails.PlanKey,
-			PlanName = planDetails.Name,
-			UsersLimitPerPlan = planDetails.UsersLimitPerPlan,
-			CampaignsLimitPerPlan = planDetails.CampaignsLimitPerPlan,
-			CanUseInsightAnalytics = planDetails.CanUseInsightAnalytics,
-			IsFreePlan = planDetails.IsFreePlan,
-		};
-
-		onTrackDBContext.OrganizationalSubscriptionPlans.Add(createdPlan);
-		onTrackDBContext.SaveChanges();
-		return createdPlan;
+	public static OrganizationCveContract? GetActiveCveContract(OnTrackDBContext onTrackDBContext, Guid organizationId, DateTime asOfUtc) {
+		return onTrackDBContext.OrganizationCveContracts
+			.Where(contract =>
+				contract.OrganizationId == organizationId &&
+				contract.ContractStartDate <= asOfUtc &&
+				contract.ContractEndDate >= asOfUtc)
+			.OrderByDescending(contract => contract.ContractStartDate)
+			.FirstOrDefault();
 	}
 
-	public static OrganizationalSubscriptionPlan GetEffectiveSubscriptionPlan(OnTrackDBContext onTrackDBContext, UserOrganization organization) {
-		return organization.SubscriptionPlan ?? GetSubscriptionPlanByKey(onTrackDBContext, SubscriptionPlanCatalog.TrialKey);
-	}
-
-	public static void AssignSubscriptionPlan(
-		OnTrackDBContext onTrackDBContext,
-		UserOrganization organization,
-		string planKey,
-		DateTime appliedAtUtc)
-	{
-		var plan = GetSubscriptionPlanByKey(onTrackDBContext, planKey);
-		organization.SubscriptionPlan = plan;
-
-		if (string.Equals(planKey, SubscriptionPlanCatalog.TrialKey, StringComparison.OrdinalIgnoreCase)) {
-			organization.SubscriptionTrialStartDate ??= appliedAtUtc;
-		}
-		else {
-			organization.SubscriptionTrialStartDate = null;
-		}
-	}
-
-	public static string GetSubscriptionStatus(UserOrganization organization, DateTime asOfUtc) {
-		if (organization.SubscriptionPlan == null)
+	public static string GetSubscriptionStatus(OrganizationCveContract? activeContract, DateTime asOfUtc) {
+		if (activeContract == null)
 			return "none";
 
-		if (!string.Equals(organization.SubscriptionPlan.PlanKey, SubscriptionPlanCatalog.TrialKey, StringComparison.OrdinalIgnoreCase))
-			return "active";
-
-		if (!organization.SubscriptionTrialStartDate.HasValue)
-			return "free";
-
-		var trialStartDate = organization.SubscriptionTrialStartDate.Value;
-		var expiresAtUtc = trialStartDate.AddDays(SubscriptionPlanCatalog.TrialDurationDays);
-		return expiresAtUtc >= asOfUtc ? "trialing" : "trial_expired";
+		return CveContractPricingCatalog.IsTrial(activeContract) ? "trialing" : "active";
 	}
 
-	public static bool CanTrackCves(UserOrganization organization, DateTime asOfUtc) {
-		var subscriptionStatus = GetSubscriptionStatus(organization, asOfUtc);
+	public static bool CanTrackCves(OnTrackDBContext onTrackDBContext, Guid organizationId, DateTime asOfUtc) {
+		var activeContract = GetActiveCveContract(onTrackDBContext, organizationId, asOfUtc);
+		var subscriptionStatus = GetSubscriptionStatus(activeContract, asOfUtc);
 		return subscriptionStatus == "active" || subscriptionStatus == "trialing";
+	}
+
+	public static OrganizationCveContract CreateTrialContract(UserOrganization organization, DateTime startUtc) {
+		return CveContractPricingCatalog.CreateTrialContract(organization.Id, startUtc);
 	}
 
         public static string? ValidatePasswordCreation(string password) {

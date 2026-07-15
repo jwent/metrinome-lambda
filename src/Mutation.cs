@@ -45,29 +45,6 @@ public class Mutation {
         }
     }
 
-    private static OrganizationalSubscriptionPlan? FindSubscriptionPlan(OnTrackDBContext onTrackDBContext, string? planKey)
-    {
-        if (string.IsNullOrWhiteSpace(planKey))
-            return null;
-
-        var trimmedPlanKey = planKey.Trim();
-        return onTrackDBContext.OrganizationalSubscriptionPlans.FirstOrDefault(plan => plan.PlanKey == trimmedPlanKey);
-    }
-
-    private static SuccessOrErrorResponse AssignOrganizationSubscriptionPlan(
-        OnTrackDBContext onTrackDBContext,
-        User user,
-        string? planKey)
-    {
-        var plan = FindSubscriptionPlan(onTrackDBContext, planKey);
-        if (plan == null)
-            return new SuccessOrErrorResponse { Success = false, Error = $"Unknown plan '{planKey}'." };
-
-        UserController.AssignSubscriptionPlan(onTrackDBContext, user.Organization, plan.PlanKey, DateTime.UtcNow);
-        onTrackDBContext.SaveChanges();
-        return new SuccessOrErrorResponse { Success = true };
-    }
-
     public static async Task<bool> SendEmail(string to, string subject, string body)
     {
         var ses = new AmazonSimpleEmailServiceClient(Amazon.RegionEndpoint.USEast1);
@@ -319,13 +296,13 @@ public class Mutation {
 
         if (user == null)
         {
-            var trialPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, SubscriptionPlanCatalog.TrialKey);
+            var now = DateTime.UtcNow;
             var newUser = new User
             {
                 Id = Guid.NewGuid(),
                 Email = email,
                 Password = string.Empty,
-                CreatedAt = DateTime.Now,
+                CreatedAt = now,
                 ResetPasswordToken = string.Empty,
                 UserState = "Active",
             };
@@ -334,10 +311,10 @@ public class Mutation {
             {
                 Id = Guid.NewGuid(),
                 CreatorId = newUser.Id,
-                CreatedAt = DateTime.Now,
-                SubscriptionPlan = trialPlan,
-                SubscriptionTrialStartDate = DateTime.UtcNow,
+                CreatedAt = now,
+                SubscriptionTrialStartDate = now,
             };
+            var trialContract = UserController.CreateTrialContract(newOrganization, now);
 
             newUser.Organization = newOrganization;
 
@@ -354,6 +331,7 @@ public class Mutation {
                 onTrackDBContext.Users.Add(newUser);
                 onTrackDBContext.UserOrganizations.Add(newOrganization);
                 onTrackDBContext.UserOrganizationalRoleAssociations.Add(newRole);
+                onTrackDBContext.OrganizationCveContracts.Add(trialContract);
                 onTrackDBContext.SaveChanges();
             }
             catch (DbUpdateException e)
@@ -362,6 +340,7 @@ public class Mutation {
                 onTrackDBContext.Users.Remove(newUser);
                 onTrackDBContext.UserOrganizations.Remove(newOrganization);
                 onTrackDBContext.UserOrganizationalRoleAssociations.Remove(newRole);
+                onTrackDBContext.OrganizationCveContracts.Remove(trialContract);
                 return new LoginUserResponse { Error = "Invalid or duplicate email." };
             }
 
@@ -557,11 +536,13 @@ public class Mutation {
             var userId = UserController.GetCurrentUserId(context);
             var user = onTrackDBContext.Users
                     .Include(u => u.ExtraProperties)
-                    .Include(u => u.Organization.SubscriptionPlan)
+                    .Include(u => u.Organization)
                     .First(u => u.Id == userId);
 
-            UserController.AssignSubscriptionPlan(onTrackDBContext, user.Organization, SubscriptionPlanCatalog.TrialKey, DateTime.UtcNow);
-            user.Organization.SubscriptionTrialStartDate = null;
+            var now = DateTime.UtcNow;
+            var trialContract = UserController.CreateTrialContract(user.Organization, now);
+            onTrackDBContext.OrganizationCveContracts.Add(trialContract);
+            user.Organization.SubscriptionTrialStartDate = now;
             onTrackDBContext.SaveChanges();
 
             return Task.FromResult(new SuccessOrErrorResponse { Success = true });
@@ -630,10 +611,10 @@ public class Mutation {
         {
             Id = Guid.NewGuid(),
             CreatorId = newUser.Id,
-            CreatedAt = DateTime.Now,
-            SubscriptionPlan = UserController.GetSubscriptionPlanByKey(onTrackDBContext, SubscriptionPlanCatalog.TrialKey),
+            CreatedAt = DateTime.UtcNow,
             SubscriptionTrialStartDate = DateTime.UtcNow,
         };
+        var trialContract = UserController.CreateTrialContract(newOrganization, DateTime.UtcNow);
         newUser.Organization = newOrganization;
         var newRole = new UserOrganizationalRoleAssociation
         {
@@ -651,6 +632,7 @@ public class Mutation {
             // add the new organization
             onTrackDBContext.UserOrganizations.Add(newOrganization);
             onTrackDBContext.UserOrganizationalRoleAssociations.Add(newRole);
+            onTrackDBContext.OrganizationCveContracts.Add(trialContract);
             // try to commit the user
             onTrackDBContext.SaveChanges();
 
@@ -661,6 +643,7 @@ public class Mutation {
             onTrackDBContext.Users.Remove(newUser);
             onTrackDBContext.UserOrganizations.Remove(newOrganization);
             onTrackDBContext.UserOrganizationalRoleAssociations.Remove(newRole);
+            onTrackDBContext.OrganizationCveContracts.Remove(trialContract);
             return new AddUserResponse { Error = "Invalid or duplicate email." };
         }
 
@@ -700,7 +683,6 @@ public class Mutation {
 		var userId = UserController.GetCurrentUserId(context);
 		var user = onTrackDBContext.Users
 			.Include(u => u.Organization.Users)
-			.Include(u => u.Organization.SubscriptionPlan)
 			.First(u => u.Id == userId);
 
 		// check user AuthZ
@@ -719,13 +701,6 @@ public class Mutation {
 		// check email parameter settings
 		if (email.Length > 128)
 			return new AddUserResponse { Error="Invalid or duplicate email." };
-
-		var subscriptionPlan = UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, user.Organization);
-		// check if the organization subscription plan allows for this additional user
-		if (user.Organization.Users.Count >= subscriptionPlan.UsersLimitPerPlan) {
-			Console.WriteLine($"[+] organization has reached users limit! denied!");
-			return new AddUserResponse { Error="Your subscription plan has reached user limit." };
-		}
 
 		// generate a random token so that they can register
 		var randomResetToken = Util.GetSecureRandomString(64); // 256 bits of security
@@ -1089,27 +1064,10 @@ public class Mutation {
         [FromServices] OnTrackDBContext onTrackDBContext,
         string planKey)
     {
-        try
-        {
-            var userId = UserController.GetCurrentUserId(context);
-            var user = onTrackDBContext.Users
-                    .Include(u => u.Organization.SubscriptionPlan)
-                    .First(u => u.Id == userId);
-
-            var plan = await onTrackDBContext.OrganizationalSubscriptionPlans.AsNoTracking().FirstOrDefaultAsync(p => p.PlanKey == planKey);
-            if (plan == null)
-                return new SuccessOrErrorResponse { Success = false, Error = $"Unknown plan '{planKey}'." };
-
-            UserController.AssignSubscriptionPlan(onTrackDBContext, user.Organization, plan.PlanKey, DateTime.UtcNow);
-            onTrackDBContext.SaveChanges();
-
-            return new SuccessOrErrorResponse { Success = true };
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[!] Failed to change subscription: {ex.Message}");
-            return new SuccessOrErrorResponse { Success = false, Error = ex.Message };
-        }
+        return await Task.FromResult(new SuccessOrErrorResponse {
+            Success = false,
+            Error = "Legacy subscription plans are no longer supported. Manage CVE contracts instead."
+        });
     }
 
 }

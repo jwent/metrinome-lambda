@@ -58,19 +58,6 @@ public class OnTrackDBContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<OrganizationalSubscriptionPlan>().HasData(
-            SubscriptionPlanCatalog.GetAllPlans().Select(plan => new OrganizationalSubscriptionPlan
-            {
-                Id = plan.Id,
-                PlanKey = plan.PlanKey,
-                PlanName = plan.Name,
-                UsersLimitPerPlan = plan.UsersLimitPerPlan,
-                CampaignsLimitPerPlan = plan.CampaignsLimitPerPlan,
-                CanUseInsightAnalytics = plan.CanUseInsightAnalytics,
-                IsFreePlan = plan.IsFreePlan,
-            }).ToArray()
-        );
-
         base.OnModelCreating(modelBuilder);
     }
 }

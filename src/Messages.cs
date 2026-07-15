@@ -243,6 +243,7 @@ public class AccountSummaryResponse
 	public string? OrganizationName { get; set; }
 	public DateTime? OrganizationCreatedAt { get; set; }
 	public List<UserData>? Users { get; set; }
+	public string? PlanName { get; set; }
 	public OrganizationalSubscriptionPlan? SubscriptionPlan { get; set; }
 	public string? SubscriptionStatus { get; set; }
 	public int UserCount { get; set; }
@@ -255,6 +256,7 @@ public class AccountSummaryResponse
 	public int CurrentPeriodProcessedCves { get; set; }
 	public int? CurrentPeriodCveLimit { get; set; }
 	public string? ContractTierName { get; set; }
+	public DateTime? ContractStartDate { get; set; }
 	public int? CommittedAnnualCves { get; set; }
 	public int? RemainingCommittedCves { get; set; }
 	public long RatePerCveCents { get; set; }

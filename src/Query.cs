@@ -62,7 +62,7 @@ public class Query
 		return new OrganizationData {
 			CreatedAt=org.CreatedAt,
 			Users=userdatalist,
-			SubscriptionPlan=UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, org),
+			SubscriptionPlan=null,
 		};
 	}
 
@@ -150,8 +150,7 @@ public class Query
 	public static AccountSummaryResponse accountSummary(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
 		try {
 			var organization = UserController.GetCurrentOrganization(context, onTrackDBContext);
-			var effectivePlan = UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, organization);
-			var subscriptionStatus = UserController.GetSubscriptionStatus(organization, DateTime.UtcNow);
+			var now = DateTime.UtcNow;
 			var organizationId = organization.Id;
 			var ownerUser = organization.Users.FirstOrDefault(user => user.Id == organization.CreatorId)
 				?? organization.Users.FirstOrDefault();
@@ -182,11 +181,12 @@ public class Query
 			var activeContract = onTrackDBContext.OrganizationCveContracts
 				.Where(contract =>
 					contract.OrganizationId == organizationId &&
-					contract.ContractStartDate <= DateTime.UtcNow &&
-					contract.ContractEndDate >= DateTime.UtcNow)
+					contract.ContractStartDate <= now &&
+					contract.ContractEndDate >= now)
 				.OrderByDescending(contract => contract.ContractStartDate)
 				.FirstOrDefault();
 			var pricing = CveContractPricingCatalog.Resolve(activeContract);
+			var subscriptionStatus = UserController.GetSubscriptionStatus(activeContract, now);
 
 			var currentPeriodCountedCves = activeContract == null
 				? countedCves
@@ -231,7 +231,8 @@ public class Query
 				OrganizationName = organizationName,
 				OrganizationCreatedAt = organization.CreatedAt,
 				Users = users,
-				SubscriptionPlan = effectivePlan,
+				PlanName = pricing?.TierName ?? activeContract?.TierName,
+				SubscriptionPlan = null,
 				SubscriptionStatus = subscriptionStatus,
 				UserCount = users.Count,
 				CampaignCount = campaignCount,
@@ -242,7 +243,8 @@ public class Query
 				CurrentPeriodVerifiedCves = currentPeriodVerifiedCves,
 				CurrentPeriodProcessedCves = currentPeriodProcessedCves,
 				CurrentPeriodCveLimit = activeContract?.CommittedAnnualCVEs,
-				ContractTierName = activeContract?.TierName ?? pricing?.TierName,
+				ContractTierName = pricing?.TierName ?? activeContract?.TierName,
+				ContractStartDate = activeContract?.ContractStartDate,
 				CommittedAnnualCves = activeContract?.CommittedAnnualCVEs,
 				RemainingCommittedCves = activeContract == null
 					? null
@@ -623,14 +625,7 @@ public class Query
 
 		// get user properties for reference
 		var userId = UserController.GetCurrentUserId(context);
-		var organization = UserController.GetCurrentOrganization(context, onTrackDBContext);
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
-
-		// check if the organization subscription plan allows for insight analytics
-                if (organization.SubscriptionPlan == null || !organization.SubscriptionPlan.CanUseInsightAnalytics) {
-                        Console.WriteLine($"[+] organization does not have insight analytics in their subscription plan!");
-                        throw new Exception("unauthorized");
-                }
 
 		// select where we want to get stuff from
 		var query =
@@ -715,14 +710,7 @@ public class Query
 
 		// get user properties for reference
 		var userId = UserController.GetCurrentUserId(context);
-		var organization = UserController.GetCurrentOrganization(context, onTrackDBContext);
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
-
-		// check if the organization subscription plan allows for insight analytics
-                if (organization.SubscriptionPlan == null || !organization.SubscriptionPlan.CanUseInsightAnalytics) {
-                        Console.WriteLine($"[+] organization does not have insight analytics in their subscription plan!");
-                        throw new Exception("unauthorized");
-                }
 
 		// select where we want to get stuff from
 		var query =
@@ -762,7 +750,7 @@ public class Query
             var userId = UserController.GetCurrentUserId(context);
 
             var user = onTrackDBContext.Users
-                .Include(u => u.Organization.SubscriptionPlan)
+                .Include(u => u.Organization)
                 .Include(u => u.ExtraProperties)
                 .FirstOrDefault(u => u.Id == userId);
 
@@ -775,15 +763,17 @@ public class Query
                 });
             }
 
-            var effectivePlan = UserController.GetEffectiveSubscriptionPlan(onTrackDBContext, user.Organization);
+            var now = DateTime.UtcNow;
+            var activeContract = UserController.GetActiveCveContract(onTrackDBContext, user.Organization.Id, now);
+            var pricing = CveContractPricingCatalog.Resolve(activeContract);
             var fullName = user.ExtraProperties.FirstOrDefault(p => p.PropertyKey == "FullName")?.PropertyValue;
 
             return Task.FromResult(new CurrentSubscriptionResponse
             {
                 Success = true,
-                PlanKey = effectivePlan.PlanKey,
-                PlanName = effectivePlan.PlanName,
-                Status = UserController.GetSubscriptionStatus(user.Organization, DateTime.UtcNow),
+                PlanKey = activeContract?.TierName?.ToLowerInvariant(),
+                PlanName = pricing?.TierName ?? activeContract?.TierName,
+                Status = UserController.GetSubscriptionStatus(activeContract, now),
                 CustomerName = !string.IsNullOrWhiteSpace(fullName) ? fullName : user.Email
             });
         }

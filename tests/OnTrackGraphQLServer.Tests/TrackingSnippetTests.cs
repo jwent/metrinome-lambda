@@ -12,6 +12,64 @@ public class TrackingSnippetTests
     private const string DefaultExistingTestEmail = "jeremy.mark.went@gmail.com";
 
     [Fact]
+    public void CreateTrialContract_UsesTrialCapacityAndHardLimit()
+    {
+        var organizationId = Guid.NewGuid();
+        var start = DateTime.UtcNow;
+
+        var contract = CveContractPricingCatalog.CreateTrialContract(organizationId, start);
+
+        Assert.Equal(organizationId, contract.OrganizationId);
+        Assert.Equal("Trial", contract.TierName);
+        Assert.Equal(100, contract.CommittedAnnualCVEs);
+        Assert.True(contract.CVEHardLimitEnabled);
+        Assert.Equal(start, contract.ContractStartDate);
+        Assert.Equal(start.AddDays(14), contract.ContractEndDate);
+    }
+
+    [Theory]
+    [InlineData("Trial", 100, "Trial", 0, 0)]
+    [InlineData("Core", 20000, "Core", 150, 3000000)]
+    [InlineData("Scale", 100000, "Scale", 100, 10000000)]
+    [InlineData("Enterprise", 300000, "Enterprise", 75, 22500000)]
+    [InlineData("Enterprise+", 400000, "Enterprise+", 60, 30000000)]
+    public void Resolve_ReturnsExpectedPlanNamesAndPricing(
+        string tierName,
+        int committedAnnualCves,
+        string expectedTierName,
+        long expectedRatePerCveCents,
+        long expectedAnnualMinimumFeeCents)
+    {
+        var contract = new OrganizationCveContract
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = Guid.NewGuid(),
+            TierName = tierName,
+            CommittedAnnualCVEs = committedAnnualCves,
+            ContractStartDate = DateTime.UtcNow.AddDays(-1),
+            ContractEndDate = DateTime.UtcNow.AddDays(1),
+            CVEHardLimitEnabled = true,
+            CreatedAt = DateTime.UtcNow.AddDays(-1),
+            UpdatedAt = DateTime.UtcNow.AddDays(-1),
+        };
+
+        var pricing = CveContractPricingCatalog.Resolve(contract);
+
+        Assert.NotNull(pricing);
+        Assert.Equal(expectedTierName, pricing!.TierName);
+        Assert.Equal(expectedRatePerCveCents, pricing.RatePerCveCents);
+        Assert.Equal(expectedAnnualMinimumFeeCents, pricing.AnnualMinimumFeeCents);
+    }
+
+    [Fact]
+    public void GetSubscriptionStatus_ReturnsNoneForExpiredTrialContract()
+    {
+        var status = UserController.GetSubscriptionStatus(null, DateTime.UtcNow);
+
+        Assert.Equal("none", status);
+    }
+
+    [Fact]
     public async Task LandingPageSnippet_CreatesClickEvent()
     {
         using var harness = TrackingTestHarness.Create();
@@ -235,8 +293,9 @@ public class TrackingSnippetTests
     public async Task ExpiredTrialSubscription_DoesNotAcceptTrackedClicks()
     {
         using var harness = TrackingTestHarness.Create(
-            planKey: SubscriptionPlanCatalog.TrialKey,
-            subscriptionTrialStartDate: DateTime.UtcNow.AddDays(-(SubscriptionPlanCatalog.TrialDurationDays + 1)),
+            contractTierName: CveContractPricingCatalog.TrialTierName,
+            contractStartDate: DateTime.UtcNow.AddDays(-(CveContractPricingCatalog.TrialDurationDays + 2)),
+            contractEndDate: DateTime.UtcNow.AddDays(-1),
             useExistingUser: false);
 
         await Assert.ThrowsAsync<BadHttpRequestException>(() => TrackerController.RegisterClickAsync(
@@ -322,6 +381,7 @@ public class TrackingSnippetTests
         Assert.Equal(baseline.CurrentPeriodCountedCves + 2, summary.CurrentPeriodCountedCves);
         Assert.Equal(baseline.CurrentPeriodVerifiedCves + 2, summary.CurrentPeriodVerifiedCves);
         Assert.Equal(baseline.CurrentPeriodProcessedCves + 2, summary.CurrentPeriodProcessedCves);
+        Assert.Equal("Core", summary.PlanName);
         Assert.Equal("Core", summary.ContractTierName);
         Assert.Equal(20000, summary.CurrentPeriodCveLimit);
         Assert.Equal(20000, summary.CommittedAnnualCves);
@@ -332,8 +392,8 @@ public class TrackingSnippetTests
         Assert.Equal(3000000, summary.CurrentPlanCostCents);
         Assert.Equal((baseline.CurrentPeriodProcessedCves + 2) * 150, summary.UsageCostCents);
         Assert.Equal((baseline.CurrentPeriodProcessedCves + 2) * 150, summary.UsageValueCents);
-        Assert.NotNull(summary.SubscriptionPlan?.PlanKey);
-        Assert.NotNull(summary.SubscriptionStatus);
+        Assert.Null(summary.SubscriptionPlan);
+        Assert.Equal("active", summary.SubscriptionStatus);
         Assert.NotNull(summary.CostCalculation);
     }
 
@@ -404,10 +464,11 @@ public class TrackingSnippetTests
 
         public static TrackingTestHarness Create(
             string userState = "Admin",
-            string planKey = SubscriptionPlanCatalog.StarterMonthlyKey,
-            DateTime? subscriptionTrialStartDate = null,
             bool includeContract = true,
+            string contractTierName = CveContractPricingCatalog.CoreTierName,
             int committedAnnualCves = 20_000,
+            DateTime? contractStartDate = null,
+            DateTime? contractEndDate = null,
             bool useExistingUser = true,
             string? userEmail = null)
         {
@@ -425,7 +486,6 @@ public class TrackingSnippetTests
                 .Options;
 
             var db = new OnTrackDBContext(options);
-            var plan = UserController.GetSubscriptionPlanByKey(db, planKey);
 
             var now = DateTime.UtcNow;
             var runId = Guid.NewGuid().ToString("N")[..8];
@@ -438,7 +498,6 @@ public class TrackingSnippetTests
             {
                 user = db.Users
                     .Include(u => u.Organization)
-                        .ThenInclude(o => o.SubscriptionPlan)
                     .Include(u => u.ExtraProperties)
                     .Include(u => u.UserRoles)
                     .FirstOrDefault(u => u.Email == preferredEmail)
@@ -453,8 +512,6 @@ public class TrackingSnippetTests
                     Id = Guid.NewGuid(),
                     CreatorId = Guid.NewGuid(),
                     CreatedAt = now.AddDays(-30),
-                    SubscriptionPlan = plan,
-                    SubscriptionTrialStartDate = subscriptionTrialStartDate,
                     Users = new List<User>(),
                     OrganizationalTrackers = new List<UserTracker>(),
                 };
@@ -514,10 +571,10 @@ public class TrackingSnippetTests
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = organization.Id,
-                TierName = "Core",
+                TierName = contractTierName,
                 CommittedAnnualCVEs = committedAnnualCves,
-                ContractStartDate = now.AddMinutes(-1),
-                ContractEndDate = now.AddYears(1),
+                ContractStartDate = contractStartDate ?? now.AddMinutes(-1),
+                ContractEndDate = contractEndDate ?? now.AddYears(1),
                 CVEHardLimitEnabled = true,
                 CreatedAt = now.AddMinutes(-1),
                 UpdatedAt = now.AddMinutes(-1),

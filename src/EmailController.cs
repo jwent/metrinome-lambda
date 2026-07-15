@@ -53,37 +53,34 @@ public class EmailController
         var tomorrow = today.AddDays(1);
 
         // Show everything we have first
-        var allTrials = await dbContext.UserOrganizations
-            .Where(o => o.SubscriptionTrialStartDate.HasValue)
+        var allTrials = await dbContext.OrganizationCveContracts
+            .Where(c => c.TierName == CveContractPricingCatalog.TrialTierName)
             .ToListAsync();
 
-        Console.WriteLine($"[TEST] Found {allTrials.Count} org(s) with trial start dates.");
-        foreach (var org in allTrials)
-            Console.WriteLine($"[TEST] Org {org.Id} started {org.SubscriptionTrialStartDate}");
+        Console.WriteLine($"[TEST] Found {allTrials.Count} trial contract(s).");
+        foreach (var contract in allTrials)
+            Console.WriteLine($"[TEST] Org {contract.OrganizationId} trial ends {contract.ContractEndDate}");
 
         // Only those expiring tomorrow
-        var expiring = await dbContext.UserOrganizations
-            .Where(o => o.SubscriptionTrialStartDate.HasValue &&
-                        o.SubscriptionPlan != null &&
-                        o.SubscriptionPlan.PlanKey == SubscriptionPlanCatalog.TrialKey &&
-                        o.SubscriptionTrialStartDate!.Value.AddDays(SubscriptionPlanCatalog.TrialDurationDays) == tomorrow)
+        var expiring = await dbContext.OrganizationCveContracts
+            .Where(contract =>
+                contract.TierName == CveContractPricingCatalog.TrialTierName &&
+                contract.ContractEndDate.Date == tomorrow)
             .Join(dbContext.Users,
-                  org => org.Id,
+                  contract => contract.OrganizationId,
                   user => user.OrganizationId,
-                  (org, user) => new { Org = org, User = user })
+                  (contract, user) => new { Contract = contract, User = user })
             .ToListAsync();
 
         if (TEST_MODE && expiring.Count == 0)
         {
             Console.WriteLine("[TEST] No trials expiring tomorrow — using first available trial for testing.");
-            expiring = await dbContext.UserOrganizations
-                .Where(o => o.SubscriptionTrialStartDate.HasValue &&
-                            o.SubscriptionPlan != null &&
-                            o.SubscriptionPlan.PlanKey == SubscriptionPlanCatalog.TrialKey)
+            expiring = await dbContext.OrganizationCveContracts
+                .Where(contract => contract.TierName == CveContractPricingCatalog.TrialTierName)
                 .Join(dbContext.Users,
-                      org => org.Id,
+                      contract => contract.OrganizationId,
                       user => user.OrganizationId,
-                      (org, user) => new { Org = org, User = user })
+                      (contract, user) => new { Contract = contract, User = user })
                 .Take(1)
                 .ToListAsync();
         }
@@ -92,11 +89,8 @@ public class EmailController
 
         foreach (var item in expiring)
         {
-            if (!item.Org.SubscriptionTrialStartDate.HasValue)
-                continue;
-
             var email = item.User.Email;
-            var expiry = item.Org.SubscriptionTrialStartDate.Value.AddDays(SubscriptionPlanCatalog.TrialDurationDays);
+            var expiry = item.Contract.ContractEndDate;
 
             await SendTrialEndingEmailAsync(email, expiry);
         }

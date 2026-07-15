@@ -32,11 +32,10 @@ public class TrackerController {
 
 		var userTracker = await onTrackDBContext.UserTrackers
 			.Include(t => t.Organization)
-				.ThenInclude(o => o.SubscriptionPlan)
 			.FirstOrDefaultAsync(t => t.Id == userTrackerId);
 		if (userTracker == null)
 			throw new BadHttpRequestException("Tracker not found.");
-		if (!UserController.CanTrackCves(userTracker.Organization, DateTime.UtcNow))
+		if (!UserController.CanTrackCves(onTrackDBContext, userTracker.Organization.Id, DateTime.UtcNow))
 			throw new BadHttpRequestException("Organization subscription is not active for click tracking.");
 
 		var clickUrl = DecodeBase64OrRaw(encodedUrl);
@@ -146,7 +145,7 @@ public class TrackerController {
 			cveEvent.Status = "Duplicate";
 			cveEvent.DuplicateOfEventId = originalEvent.Id;
 		}
-		else if (!UserController.CanTrackCves(organization, submittedAtUtc)) {
+		else if (!UserController.CanTrackCves(onTrackDBContext, organizationId, submittedAtUtc)) {
 			RejectCveEvent(cveEvent, "Organization subscription is not active for CVE tracking.");
 		}
 		else if (contract == null) {
