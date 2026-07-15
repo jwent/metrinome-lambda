@@ -106,12 +106,12 @@ public class EmailController
 
     private static async Task SendTrialEndingEmailAsync(string email, DateTime expiry)
     {
-        var subject = "Your OnTrack trial is ending soon";
+        var subject = "Your Metrinome trial is ending soon";
         var body = $@"
         <p>Hi,</p>
-        <p>Your OnTrack trial ends on <b>{expiry:D}</b>.</p>
+        <p>Your Metrinome trial ends on <b>{expiry:D}</b>.</p>
         <p>Update your organization subscription plan before then if you want higher limits and insights access.</p>
-        <p>Thanks,<br>The OnTrack Team</p>";
+        <p>Thanks,<br>The Metrinome Team</p>";
 
         await SendEmail(email, subject, body);
     }

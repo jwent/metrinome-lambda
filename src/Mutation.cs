@@ -446,14 +446,14 @@ public class Mutation {
                 <body style='font-family: Arial, sans-serif;'>
                     <h2>Password Reset Requested</h2>
                     <p>Hello {user.Email ?? "there"},</p>
-                    <p>We received a request to reset your password for your OnTrack Analytics account.</p>
+                    <p>We received a request to reset your password for your Metrinome account.</p>
                     <p>
                         Click the link below to reset it:<br/>
                         <a href='{resetUrl}' style='color:#2563EB; font-weight:bold;'>{resetUrl}</a>
                     </p>
                     <p>If you didn’t request this, you can safely ignore this email.</p>
                     <br/>
-                    <p>— The OnTrack Team</p>
+                    <p>- The Metrinome Team</p>
                 </body>
             </html>";
 
@@ -767,7 +767,7 @@ public class Mutation {
 
         await EmailController.SendEmail(
             email,
-            "You've been invited to an OnTrack Analytics organization",
+            "You've been invited to a Metrinome organization",
             body
         );
 

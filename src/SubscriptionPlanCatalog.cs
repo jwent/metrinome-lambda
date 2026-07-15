@@ -29,7 +29,7 @@ public static class SubscriptionPlanCatalog
 				{
 					Id = Guid.Parse("0312ecaf-74da-427c-8750-f8b69aa948c3"),
 					PlanKey = StarterMonthlyKey,
-					Name = "OnTrack Starter Plan ($299/mo)",
+					Name = "Starter Plan ($299/mo)",
 					UsersLimitPerPlan = 1,
 					CampaignsLimitPerPlan = 10,
 					CanUseInsightAnalytics = false,
@@ -42,7 +42,7 @@ public static class SubscriptionPlanCatalog
 				{
 					Id = Guid.Parse("9e19b577-d158-479c-85ee-341e9c7d7564"),
 					PlanKey = StarterYearlyKey,
-					Name = "OnTrack Starter Plan ($2090/yr)",
+					Name = "Starter Plan ($2090/yr)",
 					UsersLimitPerPlan = 1,
 					CampaignsLimitPerPlan = 10,
 					CanUseInsightAnalytics = false,
@@ -55,7 +55,7 @@ public static class SubscriptionPlanCatalog
 				{
 					Id = Guid.Parse("8fa4f92b-0680-4a27-87a2-2baa0323671b"),
 					PlanKey = AdvancedMonthlyKey,
-					Name = "OnTrack Advanced Plan ($499/mo)",
+					Name = "Advanced Plan ($499/mo)",
 					UsersLimitPerPlan = 3,
 					CampaignsLimitPerPlan = 50,
 					CanUseInsightAnalytics = true,
@@ -68,7 +68,7 @@ public static class SubscriptionPlanCatalog
 				{
 					Id = Guid.Parse("93abde3a-d53f-4337-b5fd-27c2bf870a34"),
 					PlanKey = AdvancedYearlyKey,
-					Name = "OnTrack Advanced Plan ($4900/yr)",
+					Name = "Advanced Plan ($4900/yr)",
 					UsersLimitPerPlan = 3,
 					CampaignsLimitPerPlan = 50,
 					CanUseInsightAnalytics = true,
