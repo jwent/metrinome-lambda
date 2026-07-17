@@ -135,6 +135,6 @@ public class Util {
         // URL-encode email for safety
         var encodedEmail = Uri.EscapeDataString(normalizedEmail);
 
-        return $"{baseUrl}Invite?email={encodedEmail}&token=#{hash}";
+        return $"{baseUrl.TrimEnd('/')}/invite?email={encodedEmail}&token={hash}";
     }
 }

@@ -738,7 +738,7 @@ public class Mutation {
 
         var baseUrl = Environment.GetEnvironmentVariable("ONTRACK_SITE_URL")?.TrimEnd('/');
 
-        var body = $"Please follow <a href='{baseUrl}/signuporguser/?resetkey={randomResetToken}'>this link</a> to register your account and join the organization.";
+        var body = $"Please follow <a href='{baseUrl}/signup-org-user?resetkey={randomResetToken}'>this link</a> to register your account and join the organization.";
 
         await EmailController.SendEmail(
             email,
