@@ -65,6 +65,8 @@ public class OrganizationalSubscriptionPlan {
 public class OrganizationCveContract {
 	public Guid Id { get; set; }
 	public Guid OrganizationId { get; set; }
+	[ForeignKey(nameof(OrganizationId))]
+	public UserOrganization Organization { get; set; } = null!;
 	public string TierName { get; set; } = string.Empty;
 	public int CommittedAnnualCVEs { get; set; }
 	public DateTime ContractStartDate { get; set; }

@@ -7,6 +7,7 @@ using GraphQL;
 using GraphQL.Authorization;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -17,12 +18,53 @@ using System.Text.Json;
 using System.Threading;
 
 public class Mutation {
+    private const string DuplicateEmailError = "Invalid or duplicate email.";
+    private const string CreateAccountError = "Unable to create account. Please try again.";
+
     private static void LogCloudWatchEvent(string eventName, object details) {
         Console.WriteLine(JsonSerializer.Serialize(new {
             eventName,
             timestampUtc = DateTime.UtcNow,
             details
         }));
+    }
+
+    private static bool IsDuplicateEmailError(DbUpdateException exception)
+    {
+        return exception.InnerException is PostgresException postgresException &&
+               postgresException.SqlState == PostgresErrorCodes.UniqueViolation &&
+               string.Equals(postgresException.ConstraintName, "IX_Users_Email", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeResetToken(string resetToken)
+    {
+        var token = resetToken?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(token))
+            return string.Empty;
+
+        if (Uri.TryCreate(token, UriKind.Absolute, out var uri))
+        {
+            var query = QueryHelpers.ParseQuery(uri.Query);
+            if (query.TryGetValue("resetkey", out var resetKey) && !string.IsNullOrWhiteSpace(resetKey))
+                token = resetKey.ToString();
+            else if (query.TryGetValue("token", out var queryToken) && !string.IsNullOrWhiteSpace(queryToken))
+                token = queryToken.ToString();
+        }
+
+        try
+        {
+            token = Uri.UnescapeDataString(token);
+        }
+        catch (UriFormatException)
+        {
+            // Keep the original token if it is not a valid escaped string.
+        }
+
+        var suffixStart = token.IndexOf('/');
+        if (suffixStart > 0)
+            token = token.Substring(0, suffixStart);
+
+        return token.Trim();
     }
 
     //[Authorize(Policy = "AdminPolicy")] // optional; adjust to CustomerPolicy if you prefer
@@ -563,14 +605,14 @@ public class Mutation {
         if (possibleUser != null)
         {
             Console.WriteLine("duplicate user!");
-            return new AddUserResponse { Error = "Invalid or duplicate email." };
+            return new AddUserResponse { Error = DuplicateEmailError };
         }
 
         // assert stuff
         if (fullname.Length > 128)
             return new AddUserResponse { Error = "Invalid fullname." };
         if (email.Length > 128)
-            return new AddUserResponse { Error = "Invalid or duplicate email." };
+            return new AddUserResponse { Error = DuplicateEmailError };
         var passwordError = UserController.ValidatePasswordCreation(password);
         if (passwordError != null)
             return new AddUserResponse { Error = passwordError };
@@ -615,6 +657,7 @@ public class Mutation {
             SubscriptionTrialStartDate = DateTime.UtcNow,
         };
         var trialContract = UserController.CreateTrialContract(newOrganization, DateTime.UtcNow);
+        trialContract.Organization = newOrganization;
         newUser.Organization = newOrganization;
         var newRole = new UserOrganizationalRoleAssociation
         {
@@ -637,14 +680,23 @@ public class Mutation {
             onTrackDBContext.SaveChanges();
 
         }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException e)
+        catch (DbUpdateException e) when (IsDuplicateEmailError(e))
         {
             Console.WriteLine("duplicate user key error:" + e.ToString());
             onTrackDBContext.Users.Remove(newUser);
             onTrackDBContext.UserOrganizations.Remove(newOrganization);
             onTrackDBContext.UserOrganizationalRoleAssociations.Remove(newRole);
             onTrackDBContext.OrganizationCveContracts.Remove(trialContract);
-            return new AddUserResponse { Error = "Invalid or duplicate email." };
+            return new AddUserResponse { Error = DuplicateEmailError };
+        }
+        catch (DbUpdateException e)
+        {
+            Console.WriteLine("create account database error:" + e.ToString());
+            onTrackDBContext.Users.Remove(newUser);
+            onTrackDBContext.UserOrganizations.Remove(newOrganization);
+            onTrackDBContext.UserOrganizationalRoleAssociations.Remove(newRole);
+            onTrackDBContext.OrganizationCveContracts.Remove(trialContract);
+            return new AddUserResponse { Error = CreateAccountError };
         }
 
         // add the user's tracker immediately
@@ -751,6 +803,8 @@ public class Mutation {
 	}
 
 	public static AddUserResponse registerNewOrganizationalUser(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken, string fullname, string password) {
+        resetToken = NormalizeResetToken(resetToken);
+
 		// assert that the resetToken is not invalid
 		if (resetToken.Length < 8)
 			return new AddUserResponse { Error="Invalid or missing user." };
@@ -794,6 +848,8 @@ public class Mutation {
 	}
 
 	public static LoginUserResponse verifyUserEmail(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken) {
+        resetToken = NormalizeResetToken(resetToken);
+
 		// assert that the resetToken is not invalid
         if (resetToken.Length < 8)
 			return new LoginUserResponse { Error="Invalid or missing user." };
@@ -821,6 +877,8 @@ public class Mutation {
 
     public static LoginUserResponse verifyUserToken(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext, string resetToken)
     {
+        resetToken = NormalizeResetToken(resetToken);
+
         // assert that the resetToken is not invalid
         if (resetToken.Length < 8)
             return new LoginUserResponse { Error = "Invalid or missing user." };

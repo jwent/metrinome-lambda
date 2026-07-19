@@ -384,7 +384,7 @@ public class Query
 				onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id && c.Conversion == true).Count(),
 				CountDuplicateConversions(onTrackDBContext, e.campaign.Id),
 				onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == e.campaign.Id && c.Conversion == true && c.IsDesktop == true).Count(),
-				e.extraCampaignType))
+				e.extraCampaignType.PropertyValue))
 		.ToList();
 		return new Campaigns(campaign_datas, count);
 	}
@@ -444,25 +444,29 @@ public class Query
 		var userId = UserController.GetCurrentUserId(context);
 		var organizationId = UserController.GetCurrentOrganizationId(context, onTrackDBContext);
 
-		var campaignGuid = Guid.Parse(campaignId);
+		if (!Guid.TryParse(campaignId, out var campaignGuid))
+			return EmptyCampaignDetails();
+
 		Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
-		var existingCampaign = onTrackDBContext.TrackingCampaigns.Join(onTrackDBContext.TrackingCampaignExtraProperties,
-					campaign => new { campaign.Id, PropertyKey = "CampaignType" },
-					extra => new { extra.Parent.Id, extra.PropertyKey },
-					(campaign, extraCampaignType) => new { campaign, extraCampaignType }
-				).First(e => e.campaign.Id == campaignGuid && e.campaign.ParentTracker.Organization.Id == organizationId);
+		var existingCampaign = onTrackDBContext.TrackingCampaigns
+				.FirstOrDefault(e => e.Id == campaignGuid && e.ParentTracker.Organization.Id == organizationId);
 
 		if (existingCampaign == null)
-			throw new Exception("campaign not found!");
+			return EmptyCampaignDetails();
 
-		var campaignData = new TrackingCampaignData(existingCampaign.campaign,
-					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id).Count(),
-					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
-					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.IsBotClick == true).Count(),
-					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.Conversion == true).Count(),
-					CountDuplicateConversions(onTrackDBContext, existingCampaign.campaign.Id),
-					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.campaign.Id && c.Conversion == true && c.IsDesktop == true).Count(),
-					existingCampaign.extraCampaignType);
+		var campaignType = onTrackDBContext.TrackingCampaignExtraProperties
+				.Where(extra => extra.Parent.Id == existingCampaign.Id && extra.PropertyKey == "CampaignType")
+				.Select(extra => extra.PropertyValue)
+				.FirstOrDefault() ?? "Unknown";
+
+		var campaignData = new TrackingCampaignData(existingCampaign,
+					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.Id).Count(),
+					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.Id && c.IsBotClick != true).GroupBy(c => c.Ip).Count(),
+					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.Id && c.IsBotClick == true).Count(),
+					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.Id && c.Conversion == true).Count(),
+					CountDuplicateConversions(onTrackDBContext, existingCampaign.Id),
+					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.Id && c.Conversion == true && c.IsDesktop == true).Count(),
+					campaignType);
 
 		var myClicks = onTrackDBContext.TrackerClicks
 				.Where(e => e.Campaign != null && e.Campaign.Id == campaignGuid)
@@ -512,6 +516,18 @@ public class Query
 			.ToList();
 	
 		return new TrackingCampaignDetails(campaignData, new Clicks(clicksList, count), new ChartDatas(topLocations));
+	}
+
+	private static TrackingCampaignDetails EmptyCampaignDetails() {
+		var emptyCampaign = new TrackingCampaign
+		{
+			Id = Guid.Empty,
+			CreatedAt = DateTime.UtcNow,
+		};
+		return new TrackingCampaignDetails(
+			new TrackingCampaignData(emptyCampaign, 0, 0, 0, 0, 0, 0, "Unknown"),
+			new Clicks(new List<TrackerClickData>(), 0),
+			new ChartDatas(new List<Location>()));
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]
