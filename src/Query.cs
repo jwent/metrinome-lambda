@@ -309,9 +309,12 @@ public class Query
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]
-	public static PostbackCodes postbackCode(IResolveFieldContext context) {
+	public static PostbackCodes postbackCode(IResolveFieldContext context, [FromServices] OnTrackDBContext onTrackDBContext) {
+		var userId = UserController.GetCurrentUserId(context);
+		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 		var endpoint = (Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL") ?? string.Empty).TrimEnd('/');
 		var postbackEndpoint = $"{endpoint}/postback";
+		var unmatchedPostbackUrl = postbackEndpoint + "?t=" + userTracker.Id.ToString() + @"&r='+rpr+'&u='+rpu+'&unmatched=1";
 		return new PostbackCodes
 		{
 			PagePostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
@@ -320,6 +323,9 @@ public class Query
 					var clid = match ? match.pop() : '';
 					if (!clid) {
 						console.warn('Metrinome postback: no valid clid found');
+						var rpu = window.btoa(window.location.href);
+						var rpr = window.btoa(document.referrer);
+						fetch('" + unmatchedPostbackUrl + @"', { mode: 'no-cors' });
 						return;
 					}
 					fetch('" + postbackEndpoint + @"?clid=' + encodeURIComponent(clid), { mode: 'no-cors' });
@@ -336,6 +342,10 @@ public class Query
 				
 						if(clid){
 							fetch('" + postbackEndpoint + @"?clid='+clid,{mode:'no-cors'})
+						} else {
+							var rpu = window.btoa(window.location.href);
+							var rpr = window.btoa(document.referrer);
+							fetch('" + unmatchedPostbackUrl + @"',{mode:'no-cors'})
 						}
 					});
 				})()</script>"),
@@ -449,11 +459,13 @@ public class Query
 
 		Console.WriteLine($"[+] searching campaigns by campaignId: ${campaignId}");
 		var existingCampaign = onTrackDBContext.TrackingCampaigns
+				.Include(e => e.ParentTracker)
 				.FirstOrDefault(e => e.Id == campaignGuid && e.ParentTracker.Organization.Id == organizationId);
 
 		if (existingCampaign == null)
 			return EmptyCampaignDetails();
 
+		var unmatchedConversions = CountUnmatchedConversionsForTracker(onTrackDBContext, organizationId, existingCampaign.ParentTracker.Id);
 		var campaignType = onTrackDBContext.TrackingCampaignExtraProperties
 				.Where(extra => extra.Parent.Id == existingCampaign.Id && extra.PropertyKey == "CampaignType")
 				.Select(extra => extra.PropertyValue)
@@ -466,7 +478,8 @@ public class Query
 					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.Id && c.Conversion == true).Count(),
 					CountDuplicateConversions(onTrackDBContext, existingCampaign.Id),
 					onTrackDBContext.TrackerClicks.Where(c => c.Campaign != null && c.Campaign.Id == existingCampaign.Id && c.Conversion == true && c.IsDesktop == true).Count(),
-					campaignType);
+					campaignType,
+					UnmatchedConversions: unmatchedConversions);
 
 		var myClicks = onTrackDBContext.TrackerClicks
 				.Where(e => e.Campaign != null && e.Campaign.Id == campaignGuid)
@@ -528,6 +541,14 @@ public class Query
 			new TrackingCampaignData(emptyCampaign, 0, 0, 0, 0, 0, 0, "Unknown"),
 			new Clicks(new List<TrackerClickData>(), 0),
 			new ChartDatas(new List<Location>()));
+	}
+
+	private static int CountUnmatchedConversionsForTracker(OnTrackDBContext onTrackDBContext, Guid organizationId, Guid trackerId)
+	{
+		return onTrackDBContext.ConversionVerificationEvents.Count(e =>
+			e.OrganizationId == organizationId &&
+			e.TrackerId == trackerId &&
+			e.Status == "Unmatched");
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]

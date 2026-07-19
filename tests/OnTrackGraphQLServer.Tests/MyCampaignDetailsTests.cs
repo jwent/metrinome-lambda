@@ -31,6 +31,18 @@ public class MyCampaignDetailsTests
     }
 
     [Fact]
+    public void myCampaignDetails_ReturnsUnmatchedConversions_FromRealCveEvents()
+    {
+        using var harness = CampaignDetailsTestHarness.Create(includeCampaignType: true);
+        harness.SeedUnmatchedConversionEvent();
+        var context = CreateResolveFieldContext(harness.User.Id);
+
+        var details = Query.myCampaignDetails(context, harness.Db, harness.Campaign.Id.ToString());
+
+        Assert.Equal(1, details.TrackingCampaignData.UnmatchedConversions);
+    }
+
+    [Fact]
     public void myCampaignDetails_ReturnsEmptyDetails_WhenCampaignIdIsInvalid()
     {
         using var harness = CampaignDetailsTestHarness.Create(includeCampaignType: true);
@@ -82,17 +94,23 @@ public class MyCampaignDetailsTests
             SqliteConnection connection,
             OnTrackDBContext db,
             User user,
-            TrackingCampaign campaign)
+            TrackingCampaign campaign,
+            UserOrganization organization,
+            UserTracker tracker)
         {
             this.connection = connection;
             Db = db;
             User = user;
             Campaign = campaign;
+            Organization = organization;
+            Tracker = tracker;
         }
 
         public OnTrackDBContext Db { get; }
         public User User { get; }
         public TrackingCampaign Campaign { get; }
+        public UserOrganization Organization { get; }
+        public UserTracker Tracker { get; }
 
         public static CampaignDetailsTestHarness Create(bool includeCampaignType)
         {
@@ -164,7 +182,43 @@ public class MyCampaignDetailsTests
 
             db.SaveChanges();
 
-            return new CampaignDetailsTestHarness(connection, db, user, campaign);
+            return new CampaignDetailsTestHarness(connection, db, user, campaign, organization, tracker);
+        }
+
+        public void SeedUnmatchedConversionEvent()
+        {
+            var now = DateTime.UtcNow;
+            var site = new OrganizationSite
+            {
+                Id = Guid.NewGuid(),
+                OrganizationId = Organization.Id,
+                SiteName = "example.com",
+                Domain = "example.com",
+                TrackingId = Tracker.Id.ToString(),
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+
+            Db.OrganizationSites.Add(site);
+            Db.ConversionVerificationEvents.Add(new ConversionVerificationEvent
+            {
+                Id = Guid.NewGuid(),
+                OrganizationId = Organization.Id,
+                SiteId = site.Id,
+                TrackerId = Tracker.Id,
+                TrackingCampaignId = null,
+                TrackerClickId = null,
+                SubmittedAtUtc = now,
+                OriginalEventTimestampUtc = now,
+                Status = "Unmatched",
+                CountsTowardCve = true,
+                CountedAtUtc = now,
+                Source = "javascript_postback_unmatched",
+                CreatedAtUtc = now,
+                UpdatedAtUtc = now,
+            });
+            Db.SaveChanges();
         }
 
         public TrackingCampaign SeedOtherOrganizationCampaign()

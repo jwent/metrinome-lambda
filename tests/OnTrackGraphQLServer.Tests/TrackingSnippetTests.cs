@@ -72,7 +72,7 @@ public class TrackingSnippetTests
     [Fact]
     public async Task LandingPageSnippet_CreatesClickEvent()
     {
-        using var harness = TrackingTestHarness.Create();
+        using var harness = TrackingTestHarness.Create(useExistingUser: false);
         var context = CreateResolveFieldContext(harness.User.Id);
 
         var snippet = Query.trackerCode(context, harness.Db);
@@ -105,13 +105,14 @@ public class TrackingSnippetTests
     [Fact]
     public async Task ThankYouPageSnippet_CreatesConversionAndCveEvent()
     {
-        using var harness = TrackingTestHarness.Create();
+        using var harness = TrackingTestHarness.Create(useExistingUser: false);
         var context = CreateResolveFieldContext(harness.User.Id);
 
-        var snippet = Query.postbackCode(context);
+        var snippet = Query.postbackCode(context, harness.Db);
 
         Assert.NotNull(snippet.PagePostback);
         Assert.Contains("https://tracking.test/postback?clid=' + encodeURIComponent(clid)", snippet.PagePostback);
+        Assert.Contains($"https://tracking.test/postback?t={harness.Tracker.Id}", snippet.PagePostback);
 
         var clickId = await CreateClickAsync(harness.Db, harness.Tracker.Id, harness.Campaign.Id, "https://thank-you.example.com/order-complete");
         var created = await TrackerController.RegisterPostbackAsync(
@@ -138,14 +139,15 @@ public class TrackingSnippetTests
     [Fact]
     public async Task ConfirmButtonSnippet_CreatesConversionAndCveEvent()
     {
-        using var harness = TrackingTestHarness.Create();
+        using var harness = TrackingTestHarness.Create(useExistingUser: false);
         var context = CreateResolveFieldContext(harness.User.Id);
 
-        var snippet = Query.postbackCode(context);
+        var snippet = Query.postbackCode(context, harness.Db);
 
         Assert.NotNull(snippet.ButtonPostback);
         Assert.Contains("document.getElementById('{id}')", snippet.ButtonPostback);
         Assert.Contains("https://tracking.test/postback?clid='+clid", snippet.ButtonPostback);
+        Assert.Contains($"https://tracking.test/postback?t={harness.Tracker.Id}", snippet.ButtonPostback);
 
         var clickId = await CreateClickAsync(harness.Db, harness.Tracker.Id, harness.Campaign.Id, "https://checkout.example.com/confirm");
         var created = await TrackerController.RegisterPostbackAsync(
@@ -186,6 +188,67 @@ public class TrackingSnippetTests
         Assert.Equal("Verified", cve.Status);
         Assert.True(cve.CountsTowardCve);
         Assert.Null(cve.ContractId);
+    }
+
+    [Fact]
+    public async Task LandingPageClick_DoesNotCreateUnmatchedCveEvent()
+    {
+        using var harness = TrackingTestHarness.Create(useExistingUser: false);
+
+        await CreateClickAsync(
+            harness.Db,
+            harness.Tracker.Id,
+            harness.Campaign.Id,
+            "https://regular-click.example.com/landing");
+
+        Assert.Empty(await harness.Db.ConversionVerificationEvents
+            .Where(e => e.TrackerId == harness.Tracker.Id)
+            .ToListAsync());
+    }
+
+    [Fact]
+    public async Task MissingClidPostback_WithValidTracker_CreatesUnmatchedCveEvent()
+    {
+        using var harness = TrackingTestHarness.Create(useExistingUser: false);
+
+        var created = await TrackerController.RegisterUnmatchedPostbackAsync(
+            harness.Db,
+            CreateRequest(origin: "https://checkout.example.com"),
+            harness.Tracker.Id.ToString(),
+            Encode("https://checkout.example.com/thank-you"),
+            Encode("https://checkout.example.com/cart"));
+
+        Assert.True(created);
+
+        var cve = await harness.Db.ConversionVerificationEvents.SingleAsync(e => e.TrackerId == harness.Tracker.Id);
+        var site = await harness.Db.OrganizationSites.SingleAsync(s => s.Id == cve.SiteId);
+
+        Assert.Equal("Unmatched", cve.Status);
+        Assert.True(cve.CountsTowardCve);
+        Assert.Equal(harness.Organization.Id, cve.OrganizationId);
+        Assert.Equal(harness.Contract.Id, cve.ContractId);
+        Assert.Equal(harness.Tracker.Id, cve.TrackerId);
+        Assert.Null(cve.TrackerClickId);
+        Assert.Null(cve.TrackingCampaignId);
+        Assert.Equal("javascript_postback_unmatched", cve.Source);
+        Assert.Equal("checkout.example.com", site.Domain);
+    }
+
+    [Fact]
+    public async Task MissingClidPostback_WithoutTracker_DoesNotCreateCveEvent()
+    {
+        using var harness = TrackingTestHarness.Create(useExistingUser: false);
+
+        await Assert.ThrowsAsync<BadHttpRequestException>(() => TrackerController.RegisterUnmatchedPostbackAsync(
+            harness.Db,
+            CreateRequest(origin: "https://checkout.example.com"),
+            null,
+            Encode("https://checkout.example.com/thank-you"),
+            Encode("https://checkout.example.com/cart")));
+
+        Assert.Empty(await harness.Db.ConversionVerificationEvents
+            .Where(e => e.OrganizationId == harness.Organization.Id && e.TrackerId == harness.Tracker.Id)
+            .ToListAsync());
     }
 
     [Fact]

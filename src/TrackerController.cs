@@ -98,6 +98,40 @@ public class TrackerController {
 		return true;
 	}
 
+	public static async Task<bool> RegisterUnmatchedPostbackAsync(
+		OnTrackDBContext onTrackDBContext,
+		HttpRequest request,
+		string? trackerId,
+		string? encodedUrl,
+		string? encodedReferer)
+	{
+		if (!Guid.TryParse(trackerId, out var userTrackerId))
+			throw new BadHttpRequestException("Invalid tracker id.");
+
+		var userTracker = await onTrackDBContext.UserTrackers
+			.Include(t => t.Organization)
+				.ThenInclude(o => o.SubscriptionPlan)
+			.FirstOrDefaultAsync(t => t.Id == userTrackerId);
+		if (userTracker == null)
+			return false;
+
+		var submittedAtUtc = DateTime.UtcNow;
+		try {
+			await CreateUnmatchedCveEventAsync(
+				onTrackDBContext,
+				request,
+				userTracker,
+				DecodeBase64OrRaw(encodedUrl),
+				DecodeBase64OrRaw(encodedReferer),
+				submittedAtUtc);
+		}
+		catch (PostgresException ex) when (ex.SqlState == "42P01") {
+			Console.WriteLine($"[CVE] CVE schema missing, skipping unmatched CVE event creation for tracker {userTracker.Id}: {ex.MessageText}");
+		}
+
+		return true;
+	}
+
 	private static async Task CreateCveEventAsync(
 		OnTrackDBContext onTrackDBContext,
 		HttpRequest request,
@@ -176,6 +210,79 @@ public class TrackerController {
 		await onTrackDBContext.SaveChangesAsync();
 	}
 
+	private static async Task CreateUnmatchedCveEventAsync(
+		OnTrackDBContext onTrackDBContext,
+		HttpRequest request,
+		UserTracker userTracker,
+		string postbackUrl,
+		string referer,
+		DateTime submittedAtUtc)
+	{
+		var organization = userTracker.Organization;
+		var organizationId = organization.Id;
+		var site = await FindOrCreateSiteAsync(onTrackDBContext, organizationId, userTracker.Id, postbackUrl, referer, submittedAtUtc);
+		var contract = await onTrackDBContext.OrganizationCveContracts
+			.Where(c =>
+				c.OrganizationId == organizationId &&
+				c.ContractStartDate <= submittedAtUtc &&
+				c.ContractEndDate >= submittedAtUtc)
+			.OrderByDescending(c => c.ContractStartDate)
+			.FirstOrDefaultAsync();
+
+		var eventId = Guid.NewGuid();
+		var cveEvent = new ConversionVerificationEvent {
+			Id = eventId,
+			OrganizationId = organizationId,
+			SiteId = site.Id,
+			ContractId = contract?.Id,
+			TrackerId = userTracker.Id,
+			TrackingCampaignId = null,
+			TrackerClickId = null,
+			ExternalSubmissionId = eventId.ToString(),
+			ExternalConversionId = eventId.ToString(),
+			IdempotencyKey = $"javascript-postback-unmatched:{userTracker.Id}:{Guid.NewGuid():N}",
+			SubmittedAtUtc = submittedAtUtc,
+			OriginalEventTimestampUtc = submittedAtUtc,
+			Status = "Unmatched",
+			CountsTowardCve = true,
+			CountedAtUtc = submittedAtUtc,
+			RequestHash = ComputeRequestHash(request, eventId),
+			Source = "javascript_postback_unmatched",
+			CreatedAtUtc = submittedAtUtc,
+			UpdatedAtUtc = submittedAtUtc,
+		};
+
+		if (!UserController.CanTrackCves(onTrackDBContext, organizationId, submittedAtUtc)) {
+			RejectCveEvent(cveEvent, "Organization subscription is not active for CVE tracking.");
+		}
+		else if (contract == null) {
+		}
+		else {
+			var countedEvents = await onTrackDBContext.ConversionVerificationEvents.CountAsync(e =>
+				e.ContractId == contract.Id &&
+				e.CountsTowardCve);
+
+			if (contract.CVEHardLimitEnabled && countedEvents >= contract.CommittedAnnualCVEs) {
+				RejectCveEvent(cveEvent, "CVE hard limit reached for active contract.");
+				if (contract.UpgradeRequiredTriggeredAt == null)
+					contract.UpgradeRequiredTriggeredAt = submittedAtUtc;
+			}
+			else {
+				var newCount = countedEvents + 1;
+				if (contract.CommittedAnnualCVEs > 0) {
+					var usageRatio = (decimal)newCount / contract.CommittedAnnualCVEs;
+					if (contract.CVEWarning75SentAt == null && usageRatio >= 0.75m)
+						contract.CVEWarning75SentAt = submittedAtUtc;
+					if (contract.CVEWarning90SentAt == null && usageRatio >= 0.90m)
+						contract.CVEWarning90SentAt = submittedAtUtc;
+				}
+			}
+		}
+
+		onTrackDBContext.ConversionVerificationEvents.Add(cveEvent);
+		await onTrackDBContext.SaveChangesAsync();
+	}
+
 	private static void RejectCveEvent(ConversionVerificationEvent cveEvent, string rejectionReason)
 	{
 		cveEvent.Status = "Rejected";
@@ -190,7 +297,24 @@ public class TrackerController {
 		DateTime submittedAtUtc)
 	{
 		var organizationId = trackerClick.ParentTracker!.Organization.Id;
-		var host = ExtractHost(trackerClick.ClickUrl) ?? ExtractHost(trackerClick.Referer) ?? "unknown";
+		return await FindOrCreateSiteAsync(
+			onTrackDBContext,
+			organizationId,
+			trackerClick.ParentTracker.Id,
+			trackerClick.ClickUrl,
+			trackerClick.Referer,
+			submittedAtUtc);
+	}
+
+	private static async Task<OrganizationSite> FindOrCreateSiteAsync(
+		OnTrackDBContext onTrackDBContext,
+		Guid organizationId,
+		Guid trackerId,
+		string? url,
+		string? referer,
+		DateTime submittedAtUtc)
+	{
+		var host = ExtractHost(url) ?? ExtractHost(referer) ?? "unknown";
 		var normalizedHost = NormalizeHost(host);
 
 		var sites = await onTrackDBContext.OrganizationSites
@@ -206,7 +330,7 @@ public class TrackerController {
 			OrganizationId = organizationId,
 			SiteName = host,
 			Domain = host,
-			TrackingId = trackerClick.ParentTracker.Id.ToString(),
+			TrackingId = trackerId.ToString(),
 			IsActive = true,
 			CreatedAt = submittedAtUtc,
 			UpdatedAt = submittedAtUtc,

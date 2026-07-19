@@ -109,11 +109,13 @@ app.MapGet("/click", async (HttpRequest request, OnTrackDBContext onTrackDBConte
 	}
 });
 
-app.MapGet("/postback", async (HttpRequest request, OnTrackDBContext onTrackDBContext, string clid) =>
+app.MapGet("/postback", async (HttpRequest request, OnTrackDBContext onTrackDBContext, string? clid, string? t, string? u, string? r) =>
 {
 	try
 	{
-		var found = await TrackerController.RegisterPostbackAsync(onTrackDBContext, request, clid);
+		var found = !string.IsNullOrWhiteSpace(clid)
+			? await TrackerController.RegisterPostbackAsync(onTrackDBContext, request, clid)
+			: await TrackerController.RegisterUnmatchedPostbackAsync(onTrackDBContext, request, t, u, r);
 		return found ? Results.Ok() : Results.NotFound();
 	}
 	catch (BadHttpRequestException ex)
