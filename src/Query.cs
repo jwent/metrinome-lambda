@@ -314,7 +314,7 @@ public class Query
 		var userTracker = TrackerController.GetUserTrackerByUser(onTrackDBContext, userId);
 		var endpoint = (Environment.GetEnvironmentVariable("ONTRACK_CLICK_ENDPOINT_URL") ?? string.Empty).TrimEnd('/');
 		var postbackEndpoint = $"{endpoint}/postback";
-		var unmatchedPostbackUrl = postbackEndpoint + "?t=" + userTracker.Id.ToString() + @"&r='+rpr+'&u='+rpu+'&unmatched=1";
+		var unmatchedPostbackUrl = postbackEndpoint + "?clid=&t=" + userTracker.Id.ToString() + @"&r='+rpr+'&u='+rpu";
 		return new PostbackCodes
 		{
 			PagePostback = Util.CompressJavascriptStub(@"<script type=""text/javascript"">
@@ -328,7 +328,7 @@ public class Query
 						fetch('" + unmatchedPostbackUrl + @"', { mode: 'no-cors' });
 						return;
 					}
-					fetch('" + postbackEndpoint + @"?clid=' + encodeURIComponent(clid), { mode: 'no-cors' });
+					fetch('" + postbackEndpoint + @"?clid=' + encodeURIComponent(clid) + '&kind=thank_you', { mode: 'no-cors' });
 					console.log('Metrinome postback fired:', clid);
 				}
 				)();
@@ -341,7 +341,7 @@ public class Query
 						var clid = cookies ? cookies.pop() : '';
 				
 						if(clid){
-							fetch('" + postbackEndpoint + @"?clid='+clid,{mode:'no-cors'})
+							fetch('" + postbackEndpoint + @"?clid='+clid+'&kind=confirm',{mode:'no-cors'})
 						} else {
 							var rpu = window.btoa(window.location.href);
 							var rpr = window.btoa(document.referrer);
