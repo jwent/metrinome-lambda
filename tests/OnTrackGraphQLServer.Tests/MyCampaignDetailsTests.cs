@@ -34,12 +34,24 @@ public class MyCampaignDetailsTests
     public void myCampaignDetails_ReturnsUnmatchedConversions_FromRealCveEvents()
     {
         using var harness = CampaignDetailsTestHarness.Create(includeCampaignType: true);
-        harness.SeedUnmatchedConversionEvent();
+        harness.SeedUnmatchedConversionEvent(harness.Campaign.Id);
         var context = CreateResolveFieldContext(harness.User.Id);
 
         var details = Query.myCampaignDetails(context, harness.Db, harness.Campaign.Id.ToString());
 
         Assert.Equal(1, details.TrackingCampaignData.UnmatchedConversions);
+    }
+
+    [Fact]
+    public void myCampaignDetails_DoesNotCountTrackerLevelUnmatchedConversions()
+    {
+        using var harness = CampaignDetailsTestHarness.Create(includeCampaignType: true);
+        harness.SeedUnmatchedConversionEvent(trackingCampaignId: null);
+        var context = CreateResolveFieldContext(harness.User.Id);
+
+        var details = Query.myCampaignDetails(context, harness.Db, harness.Campaign.Id.ToString());
+
+        Assert.Equal(0, details.TrackingCampaignData.UnmatchedConversions);
     }
 
     [Fact]
@@ -185,7 +197,7 @@ public class MyCampaignDetailsTests
             return new CampaignDetailsTestHarness(connection, db, user, campaign, organization, tracker);
         }
 
-        public void SeedUnmatchedConversionEvent()
+        public void SeedUnmatchedConversionEvent(Guid? trackingCampaignId)
         {
             var now = DateTime.UtcNow;
             var site = new OrganizationSite
@@ -207,7 +219,7 @@ public class MyCampaignDetailsTests
                 OrganizationId = Organization.Id,
                 SiteId = site.Id,
                 TrackerId = Tracker.Id,
-                TrackingCampaignId = null,
+                TrackingCampaignId = trackingCampaignId,
                 TrackerClickId = null,
                 SubmittedAtUtc = now,
                 OriginalEventTimestampUtc = now,

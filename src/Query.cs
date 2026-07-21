@@ -471,7 +471,7 @@ public class Query
 		if (existingCampaign == null)
 			return EmptyCampaignDetails();
 
-		var unmatchedConversions = CountUnmatchedConversionsForTracker(onTrackDBContext, organizationId, existingCampaign.ParentTracker.Id);
+		var unmatchedConversions = CountUnmatchedConversionsForCampaign(onTrackDBContext, existingCampaign.Id);
 		var campaignType = onTrackDBContext.TrackingCampaignExtraProperties
 				.Where(extra => extra.Parent.Id == existingCampaign.Id && extra.PropertyKey == "CampaignType")
 				.Select(extra => extra.PropertyValue)
@@ -549,12 +549,16 @@ public class Query
 			new ChartDatas(new List<Location>()));
 	}
 
-	private static int CountUnmatchedConversionsForTracker(OnTrackDBContext onTrackDBContext, Guid organizationId, Guid trackerId)
+	private static int CountUnmatchedConversionsForCampaign(OnTrackDBContext onTrackDBContext, Guid campaignId)
 	{
-		return onTrackDBContext.ConversionVerificationEvents.Count(e =>
-			e.OrganizationId == organizationId &&
-			e.TrackerId == trackerId &&
-			e.Status == "Unmatched");
+		try {
+			return onTrackDBContext.ConversionVerificationEvents.Count(e =>
+				e.TrackingCampaignId == campaignId &&
+				e.Status == "Unmatched");
+		}
+		catch (PostgresException ex) when (ex.SqlState == "42P01") {
+			return 0;
+		}
 	}
 
 	[Authorize(Policy = "CustomerPolicy")]
