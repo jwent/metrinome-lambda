@@ -5,11 +5,6 @@ using System.Security.Cryptography;
 using System.Text;
 
 public class TrackerController {
-	private const string ConfirmPostbackKind = "confirm";
-	private const string ThankYouPostbackKind = "thank_you";
-	private const string ConfirmPostbackSource = "javascript_postback";
-	private const string ThankYouPostbackSource = "javascript_postback_thank_you";
-
 	public static TrackingCampaign GetCampaignById(OnTrackDBContext onTrackDBContext, Guid userTrackerId, Guid id) {
 		Console.WriteLine($"[+] searching campaigns by campaignId: ${id}");
 		var existingCampaign = onTrackDBContext.TrackingCampaigns.FirstOrDefault(e => e.Id == id && e.ParentTracker.Id == userTrackerId);
@@ -73,7 +68,7 @@ public class TrackerController {
 		return click.Id;
 	}
 
-	public static async Task<bool> RegisterPostbackAsync(OnTrackDBContext onTrackDBContext, HttpRequest request, string clickId, string? kind = null) {
+	public static async Task<bool> RegisterPostbackAsync(OnTrackDBContext onTrackDBContext, HttpRequest request, string clickId) {
 		if (!Guid.TryParse(clickId, out var trackerClickId))
 			throw new BadHttpRequestException("Invalid click id.");
 
@@ -94,26 +89,13 @@ public class TrackerController {
 		}
 
 		try {
-			await CreateCveEventAsync(onTrackDBContext, request, trackerClick, submittedAtUtc, NormalizePostbackKind(kind));
+			await CreateCveEventAsync(onTrackDBContext, request, trackerClick, submittedAtUtc);
 		}
 		catch (PostgresException ex) when (ex.SqlState == "42P01") {
 			Console.WriteLine($"[CVE] CVE schema missing, skipping CVE event creation for click {trackerClick.Id}: {ex.MessageText}");
 		}
 
 		return true;
-	}
-
-	private static string NormalizePostbackKind(string? kind)
-	{
-		if (string.IsNullOrWhiteSpace(kind))
-			return ConfirmPostbackKind;
-
-		var normalized = kind.Trim().ToLowerInvariant().Replace("-", "_");
-		return normalized switch {
-			"thank_you" or "thankyou" or "thank_you_page" or "page" => ThankYouPostbackKind,
-			"confirm" or "confirm_button" or "button" or "purchase" or "pos" or "point_of_sale" => ConfirmPostbackKind,
-			_ => ConfirmPostbackKind,
-		};
 	}
 
 	public static async Task<bool> RegisterUnmatchedPostbackAsync(
@@ -154,15 +136,10 @@ public class TrackerController {
 		OnTrackDBContext onTrackDBContext,
 		HttpRequest request,
 		TrackerClick trackerClick,
-		DateTime submittedAtUtc,
-		string postbackKind = ConfirmPostbackKind)
+		DateTime submittedAtUtc)
 	{
 		var organization = trackerClick.ParentTracker!.Organization;
 		var organizationId = organization.Id;
-
-		if (postbackKind == ThankYouPostbackKind && await HasConfirmCveEventAsync(onTrackDBContext, trackerClick.Id))
-			return;
-
 		var site = await FindOrCreateSiteAsync(onTrackDBContext, trackerClick, submittedAtUtc);
 		var contract = await onTrackDBContext.OrganizationCveContracts
 			.Where(c =>
@@ -189,11 +166,11 @@ public class TrackerController {
 			IdempotencyKey = $"javascript-postback:{trackerClick.Id}:{Guid.NewGuid():N}",
 			SubmittedAtUtc = submittedAtUtc,
 			OriginalEventTimestampUtc = trackerClick.ConversionDate ?? submittedAtUtc,
-			Status = postbackKind == ThankYouPostbackKind ? "Unmatched" : (trackerClick.IsBotClick == true ? "Flagged" : "Verified"),
+			Status = trackerClick.IsBotClick == true ? "Flagged" : "Verified",
 			CountsTowardCve = true,
 			CountedAtUtc = submittedAtUtc,
 			RequestHash = ComputeRequestHash(request, trackerClick.Id),
-			Source = postbackKind == ThankYouPostbackKind ? ThankYouPostbackSource : ConfirmPostbackSource,
+			Source = "javascript_postback",
 			CreatedAtUtc = submittedAtUtc,
 			UpdatedAtUtc = submittedAtUtc,
 		};
@@ -201,9 +178,6 @@ public class TrackerController {
 		if (originalEvent != null) {
 			cveEvent.Status = "Duplicate";
 			cveEvent.DuplicateOfEventId = originalEvent.Id;
-		}
-		else if (!UserController.CanTrackCves(onTrackDBContext, organizationId, submittedAtUtc)) {
-			RejectCveEvent(cveEvent, "Organization subscription is not active for CVE tracking.");
 		}
 		else if (contract == null) {
 		}
@@ -231,14 +205,6 @@ public class TrackerController {
 
 		onTrackDBContext.ConversionVerificationEvents.Add(cveEvent);
 		await onTrackDBContext.SaveChangesAsync();
-	}
-
-	private static async Task<bool> HasConfirmCveEventAsync(OnTrackDBContext onTrackDBContext, Guid trackerClickId)
-	{
-		return await onTrackDBContext.ConversionVerificationEvents.AnyAsync(e =>
-			e.TrackerClickId == trackerClickId &&
-			e.Source == ConfirmPostbackSource &&
-			e.Status != "Unmatched");
 	}
 
 	private static async Task CreateUnmatchedCveEventAsync(
@@ -283,10 +249,7 @@ public class TrackerController {
 			UpdatedAtUtc = submittedAtUtc,
 		};
 
-		if (!UserController.CanTrackCves(onTrackDBContext, organizationId, submittedAtUtc)) {
-			RejectCveEvent(cveEvent, "Organization subscription is not active for CVE tracking.");
-		}
-		else if (contract == null) {
+		if (contract == null) {
 		}
 		else {
 			var countedEvents = await onTrackDBContext.ConversionVerificationEvents.CountAsync(e =>
