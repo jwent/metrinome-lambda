@@ -43,6 +43,23 @@ public class MyCampaignDetailsTests
     }
 
     [Fact]
+    public void myCampaignDetails_ReturnsClicks_WhenGeoExtraPropertiesAreMissing()
+    {
+        using var harness = CampaignDetailsTestHarness.Create(includeCampaignType: true);
+        var click = harness.SeedClickWithoutGeoExtraProperties();
+        var context = CreateResolveFieldContext(harness.User.Id);
+
+        var details = Query.myCampaignDetails(context, harness.Db, harness.Campaign.Id.ToString());
+
+        Assert.Equal(1, details.Clicks.ClickCount);
+        var returnedClick = Assert.Single(details.Clicks.ClickDatas);
+        Assert.Equal(click.Id, returnedClick.Id);
+        Assert.Null(returnedClick.Country);
+        Assert.Null(returnedClick.Region);
+        Assert.Null(returnedClick.City);
+    }
+
+    [Fact]
     public void myCampaignDetails_DoesNotCountTrackerLevelUnmatchedConversions()
     {
         using var harness = CampaignDetailsTestHarness.Create(includeCampaignType: true);
@@ -231,6 +248,29 @@ public class MyCampaignDetailsTests
                 UpdatedAtUtc = now,
             });
             Db.SaveChanges();
+        }
+
+        public TrackerClick SeedClickWithoutGeoExtraProperties()
+        {
+            var click = new TrackerClick
+            {
+                Id = Guid.NewGuid(),
+                ParentTracker = Tracker,
+                Campaign = Campaign,
+                CreatedAt = new DateTime(2026, 7, 20, 12, 0, 0, DateTimeKind.Utc),
+                Ip = "203.0.113.10",
+                ClickUrl = $"https://example.com/?cid={Campaign.Id}",
+                Useragent = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+                Referer = "https://www.google.com/",
+                IsBotClick = true,
+                Conversion = false,
+                IsDesktop = true,
+            };
+
+            Db.TrackerClicks.Add(click);
+            Db.SaveChanges();
+
+            return click;
         }
 
         public TrackingCampaign SeedOtherOrganizationCampaign()

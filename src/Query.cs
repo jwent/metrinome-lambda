@@ -418,19 +418,31 @@ public class Query
 
 		var myClicks = onTrackDBContext.TrackerClicks
 				.Where(e => e.Campaign != null && e.Campaign.Id == campaignGuid)
-				.Join(onTrackDBContext.TrackerClickExtraProperties,
+				.GroupJoin(onTrackDBContext.TrackerClickExtraProperties,
 					click => new { click.Id, PropertyKey = "ip_country" },
 					extra => new { extra.ClickParent.Id, extra.PropertyKey },
-					(click, extraCountry) => new { click, extraCountry }
+					(click, extraCountries) => new { click, extraCountries }
 				)
-				.Join(onTrackDBContext.TrackerClickExtraProperties,
+				.SelectMany(
+					combined => combined.extraCountries.DefaultIfEmpty(),
+					(combined, extraCountry) => new { combined.click, extraCountry }
+				)
+				.GroupJoin(onTrackDBContext.TrackerClickExtraProperties,
 					combined => new { combined.click.Id, PropertyKey = "ip_region" },
 					extra => new { extra.ClickParent.Id, extra.PropertyKey },
+					(combined, extraRegions) => new { combined.click, combined.extraCountry, extraRegions }
+				)
+				.SelectMany(
+					combined => combined.extraRegions.DefaultIfEmpty(),
 					(combined, extraRegion) => new { combined.click, combined.extraCountry, extraRegion }
 				)
-				.Join(onTrackDBContext.TrackerClickExtraProperties,
+				.GroupJoin(onTrackDBContext.TrackerClickExtraProperties,
 					combined => new { combined.click.Id, PropertyKey = "ip_city" },
 					extra => new { extra.ClickParent.Id, extra.PropertyKey },
+					(combined, extraCities) => new { combined.click, combined.extraCountry, combined.extraRegion, extraCities }
+				)
+				.SelectMany(
+					combined => combined.extraCities.DefaultIfEmpty(),
 					(combined, extraCity) => new { combined.click, combined.extraCountry, combined.extraRegion, extraCity }
 				)
 				.OrderByDescending(combined => combined.click.CreatedAt);
@@ -489,19 +501,31 @@ public class Query
 
 		var myClicks = onTrackDBContext.TrackerClicks
 				.Where(e => e.Campaign != null && e.Campaign.Id == campaignGuid)
-				.Join(onTrackDBContext.TrackerClickExtraProperties,
+				.GroupJoin(onTrackDBContext.TrackerClickExtraProperties,
 					click => new { click.Id, PropertyKey = "ip_country" },
 					extra => new { extra.ClickParent.Id, extra.PropertyKey },
-					(click, extraCountry) => new { click, extraCountry }
+					(click, extraCountries) => new { click, extraCountries }
 				)
-				.Join(onTrackDBContext.TrackerClickExtraProperties,
+				.SelectMany(
+					combined => combined.extraCountries.DefaultIfEmpty(),
+					(combined, extraCountry) => new { combined.click, extraCountry }
+				)
+				.GroupJoin(onTrackDBContext.TrackerClickExtraProperties,
 					combined => new { combined.click.Id, PropertyKey = "ip_region" },
 					extra => new { extra.ClickParent.Id, extra.PropertyKey },
+					(combined, extraRegions) => new { combined.click, combined.extraCountry, extraRegions }
+				)
+				.SelectMany(
+					combined => combined.extraRegions.DefaultIfEmpty(),
 					(combined, extraRegion) => new { combined.click, combined.extraCountry, extraRegion }
 				)
-				.Join(onTrackDBContext.TrackerClickExtraProperties,
+				.GroupJoin(onTrackDBContext.TrackerClickExtraProperties,
 					combined => new { combined.click.Id, PropertyKey = "ip_city" },
 					extra => new { extra.ClickParent.Id, extra.PropertyKey },
+					(combined, extraCities) => new { combined.click, combined.extraCountry, combined.extraRegion, extraCities }
+				)
+				.SelectMany(
+					combined => combined.extraCities.DefaultIfEmpty(),
 					(combined, extraCity) => new { combined.click, combined.extraCountry, combined.extraRegion, extraCity }
 				)
 				.OrderByDescending(combined => combined.click.CreatedAt);
@@ -516,8 +540,8 @@ public class Query
 		// aggregation. Only the top ten aggregate rows are materialized in Lambda.
 		var myClicksData = myClicks.Select(combined => new
 		{
-			City = combined.extraCity.PropertyValue,
-			Region = combined.extraRegion.PropertyValue,
+			City = combined.extraCity != null ? combined.extraCity.PropertyValue : null,
+			Region = combined.extraRegion != null ? combined.extraRegion.PropertyValue : null,
 			Conversion = combined.click.Conversion,
 		});
 
